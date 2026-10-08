@@ -1090,3 +1090,6 @@ input[type='range']::-moz-range-thumb {
   background: var(--accent-soft);
   margin-bottom: 16px;
 }
+.modal-foot {
+  flex-wrap: wrap;
+}

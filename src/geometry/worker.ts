@@ -152,11 +152,11 @@ function placeForPrint(mesh: MeshData, angle: number): MeshData {
 }
 
 /** Lays an accessory on the bed using its catalogue print rotation. */
-function accessoryForPrint(type: string, params: Record<string, number>): MeshData {
+function accessoryForPrint(type: string, params: Record<string, number>, tol: number): MeshData {
   const s = new Scope();
   try {
     const rot = accessoryDef(type)?.printRot ?? [0, 90, 0];
-    const m = s.t(buildAccessory(K, s, type, params).rotate(rot));
+    const m = s.t(buildAccessory(K, s, type, params, tol).rotate(rot));
     return placeForPrint(toMesh(type, m), 0);
   } finally {
     s.free();
@@ -216,7 +216,7 @@ async function handle(msg: WorkerRequest) {
         let i = 0;
         for (const u of unique.values()) {
           const suffix = u.count > 1 ? ` x${u.count}` : '';
-          items.push({ name: `${names[u.type] ?? u.type}-${++i}${suffix}`, mesh: accessoryForPrint(u.type, u.params) });
+          items.push({ name: `${names[u.type] ?? u.type}-${++i}${suffix}`, mesh: accessoryForPrint(u.type, u.params, project.printer.insertTolerance ?? 0) });
           done += u.count;
           ctx.postMessage({ type: 'progress', id: msg.id, done, total } satisfies WorkerResponse);
           await tick();

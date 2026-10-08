@@ -398,6 +398,28 @@ function PrintTab() {
         />
         <Slider label={t('margin')} value={printer.margin} min={0} max={20} onChange={bind((p, v) => (p.printer.margin = v))} />
       </Section>
+      <Section title={t('fitTitle')}>
+        <Slider
+          label={t('holeTolerance')}
+          value={printer.holeTolerance}
+          min={-0.4}
+          max={0.6}
+          step={0.05}
+          onChange={bind((p, v) => (p.printer.holeTolerance = v))}
+        />
+        <Slider
+          label={t('insertTolerance')}
+          value={printer.insertTolerance}
+          min={-0.4}
+          max={0.4}
+          step={0.05}
+          onChange={bind((p, v) => (p.printer.insertTolerance = v))}
+        />
+        <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>
+          {t('fitHint')}
+        </p>
+        <Toggle label={t('engrave')} checked={printer.engrave} onChange={(v) => update((p) => void (p.printer.engrave = v))} />
+      </Section>
       <Section title={t('filament')}>
         <div className="big-stat">
           {grams >= 1000 ? (grams / 1000).toFixed(2) : grams.toFixed(0)}

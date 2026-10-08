@@ -84,6 +84,31 @@ describe('build', () => {
     L.scope.free();
   });
 
+  it('engraves labels on panels and frame parts', () => {
+    const vol = (engrave: boolean) => {
+      const p = defaultProject();
+      p.printer.engrave = engrave;
+      const L = computeLayout(K, p);
+      const s = new Scope();
+      const cache = prepareTools(K, L, p, s);
+      const out = ['p0_0', 'f0'].map((id) => {
+        const m = buildPiece(K, L, id, cache)!;
+        expect(m.decompose().length).toBe(1);
+        const v = m.volume();
+        m.delete();
+        return v;
+      });
+      s.free();
+      L.scope.free();
+      return out;
+    };
+    const [p0, f0] = vol(false);
+    const [p1, f1] = vol(true);
+    console.log('engraved volume mm3: panel', (p0 - p1).toFixed(1), 'frame', (f0 - f1).toFixed(1));
+    expect(p0 - p1).toBeGreaterThan(2);
+    expect(f0 - f1).toBeGreaterThan(5);
+  });
+
   it('builds all accessories', () => {
     for (const def of ACCESSORIES) {
       const s = new Scope();

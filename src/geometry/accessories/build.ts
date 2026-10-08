@@ -7,15 +7,15 @@ import { accessoryDef } from './defs';
 // +Y up, +Z out of the wall. Inserts go into -Z.
 
 /** A snap-fit insert that plugs into one HSW cell. */
-export function insertPeg(K: Kernel, s: Scope): Manifold {
+export function insertPeg(K: Kernel, s: Scope, tol = 0): Manifold {
   const { Manifold, CrossSection: CS } = K;
   const lip = s.t(s.t(new CS([hexagon(INSERT.lip)])).extrude(INSERT.lipHeight));
-  const body = s.t(s.t(s.t(new CS([hexagon(INSERT.body)])).extrude(INSERT.length)).translate([0, 0, -INSERT.length]));
+  const body = s.t(s.t(s.t(new CS([hexagon(INSERT.body + tol)])).extrude(INSERT.length)).translate([0, 0, -INSERT.length]));
   const bore = s.t(s.t(s.t(new CS([hexagon(INSERT.bore)])).extrude(INSERT.length - 1.2)).translate([0, 0, -INSERT.length - 0.1]));
   // Slot so the two halves can flex while snapping in.
   const slot = s.t(Manifold.cube([INSERT.body + 2, 1.6, 6.2], true).translate([0, 0, -INSERT.length + 3]));
   s.t(slot);
-  const y0 = INSERT.body / 2;
+  const y0 = (INSERT.body + tol) / 2;
   const ridge = (sign: number) =>
     s.t(
       Manifold.hull(
@@ -53,12 +53,12 @@ function roundedBox(K: Kernel, s: Scope, w: number, h: number, d: number, r: num
 const rod = (K: Kernel, s: Scope, d: number, len: number, seg = 32) =>
   s.t(K.Manifold.cylinder(len, d / 2, d / 2, seg));
 
-export function buildAccessory(K: Kernel, s: Scope, type: string, p: Record<string, number>): Manifold {
+export function buildAccessory(K: Kernel, s: Scope, type: string, p: Record<string, number>, tol = 0): Manifold {
   const { Manifold } = K;
   const def = accessoryDef(type);
   if (!def) return s.t(Manifold.cube(1));
   const pegs = def.pegs(p).map(pegOffset);
-  const insert = insertPeg(K, s);
+  const insert = insertPeg(K, s, tol);
   const parts: Manifold[] = pegs.map(([x, y]) => s.t(insert.translate([x, y, 0])));
   const L = INSERT.lipHeight;
   const spanX = pegs.length ? pegs[pegs.length - 1][0] : 0;

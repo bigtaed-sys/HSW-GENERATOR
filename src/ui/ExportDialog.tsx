@@ -1,4 +1,6 @@
-import { Download, FileBox, FileImage, FlaskConical, X } from 'lucide-react';
+import { Download, FileBox, FileImage, FlaskConical, ListChecks, X } from 'lucide-react';
+import { instructionsHtml } from '../export/instructions';
+import { cellCenter } from '../geometry/lattice';
 import { useEffect, useState } from 'react';
 import { accessoryDef } from '../geometry/accessories/defs';
 import { geometry } from '../geometry/client';
@@ -51,6 +53,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       setProgress(null);
       setJobId(null);
     }
+  };
+
+  const guide = () => {
+    if (!layout) return;
+    const shapes = useGeo.getState().shapes;
+    const html = instructionsHtml(
+      project,
+      layout,
+      lang,
+      (a) => shapes[shapeKey(a.type, a.params)]?.outline ?? null,
+      (c, r) => cellCenter(c, r, project.grid),
+    );
+    download(html, `${project.name || 'hsw-wall'}-assembly.html`, 'text/html');
   };
 
   const sheet = () => {
@@ -115,6 +130,9 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
         <div className="modal-foot">
           <button className="btn" onClick={sheet} disabled={!layout}>
             <FileImage size={15} /> {t('assemblySheet')}
+          </button>
+          <button className="btn" onClick={guide} disabled={!layout}>
+            <ListChecks size={15} /> {t('assemblyGuide')}
           </button>
           <div className="spacer" />
           <button className="btn primary" onClick={() => run()} disabled={!!progress || !layout}>

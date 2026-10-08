@@ -28,6 +28,10 @@ export interface LayoutPiece {
   screws: Vec2[];
   /** Where to draw the label. */
   anchor: Vec2;
+  /** Direction of the label text in degrees. */
+  anchorAngle: number;
+  /** Assembly stage: 0 panels, 1 frame parts that go underneath at joints, 2 frame parts on top. */
+  stage: number;
 }
 
 export interface Layout {

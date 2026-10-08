@@ -31,6 +31,7 @@ export const HOLE_VOLUME = (() => {
 })();
 
 export interface LayoutInternal {
+  project: Project;
   layout: Layout;
   scope: Scope;
   outer: CrossSection;
@@ -47,11 +48,11 @@ export interface LayoutInternal {
   frameParts: Map<string, FrameParts>;
 }
 
-/** A frame piece: full-height core plus half-height lap ends (top half at its start, bottom half at its end). */
+/** A frame piece: full-height core plus half-height lap ends lying on top of (high) or under (low) its neighbours. */
 export interface FrameParts {
   core: CrossSection;
-  high: CrossSection | null;
-  low: CrossSection | null;
+  high: CrossSection[];
+  low: CrossSection[];
 }
 
 function shapePolygon(project: Project): Vec2[] {
@@ -231,6 +232,8 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
           volume: 0,
           screws: [],
           anchor: centroid(polys),
+          anchorAngle: 0,
+          stage: 0,
         });
       });
     });
@@ -273,16 +276,23 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     const lapScrews: Vec2[] = laps.length && screwOk
       ? split!.cuts.map((c) => [c.p[0] - c.t[1] * (frame.width / 2), c.p[1] + c.t[0] * (frame.width / 2)] as Vec2)
       : [];
+    // Lap joints alternate: even parts lie underneath at both ends, odd parts on top.
+    // With an odd count the last and first part meet two "under" ends; the last one goes under.
+    const under = (i: number) => i % 2 === 0;
+    const parts: FrameParts[] = (split?.pieces ?? []).map((core) => ({ core, high: [], low: [] }));
+    laps.forEach((lap, j) => {
+      const prev = (j - 1 + m) % m,
+        cur = j;
+      const prevLow = under(prev) && (!under(cur) || prev === m - 1);
+      parts[prevLow ? prev : cur].low.push(lap);
+      parts[prevLow ? cur : prev].high.push(lap);
+    });
     (split?.pieces ?? []).forEach((region, i) => {
       const id = `f${i}`;
-      let parts: FrameParts = { core: region, high: null, low: null };
-      if (laps.length) {
-        const start = laps[i],
-          end = laps[(i + 1) % m];
-        parts = { core: s.t(s.t(region.subtract(start)).subtract(end)), high: start, low: end };
-      }
-      const footprint = parts.high ? s.t(CS.union([parts.core, parts.high, parts.low!])) : region;
-      frameParts.set(id, parts);
+      const pp = parts[i];
+      for (const lap of [...pp.high, ...pp.low]) pp.core = s.t(pp.core.subtract(lap));
+      const footprint = laps.length ? s.t(CS.union([pp.core, ...pp.high, ...pp.low])) : region;
+      frameParts.set(id, pp);
       regions.set(id, footprint);
       const polys = polysOf(footprint);
       const corePolys = polysOf(region);
@@ -292,6 +302,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
             ...(laps.length ? [lapScrews[i], lapScrews[(i + 1) % m]] : []),
           ]
         : [];
+      const anchor = frameAnchor(mid, corePolys);
       pieces.push({
         id,
         kind: 'frame',
@@ -303,7 +314,9 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
         holes: 0,
         volume: (footprint.area() * frontZ) / 1000,
         screws,
-        anchor: frameAnchor(mid, corePolys),
+        anchor: anchor.p,
+        anchorAngle: anchor.angle,
+        stage: pp.high.length ? 2 : 1,
       });
     });
   }
@@ -350,7 +363,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts };
+  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -674,12 +687,22 @@ function midRuns(mid: Vec2[][], piece: Vec2[][], skip?: (p: Vec2) => boolean) {
   return { runs: runs.map((r) => r.map((x) => x.p)), stepLen };
 }
 
-function frameAnchor(mid: Vec2[][], piece: Vec2[][]): Vec2 {
+/** Label position on the frame mid-line, with the direction of the frame there (degrees). */
+function frameAnchor(mid: Vec2[][], piece: Vec2[][]): { p: Vec2; angle: number } {
   const { runs } = midRuns(mid, piece);
   const longest = runs.reduce((a, r) => (r.length > a.length ? r : a), [] as Vec2[]);
-  if (longest.length) return longest[Math.floor(longest.length / 2)];
+  if (longest.length) {
+    const k = Math.floor(longest.length / 2);
+    const a = longest[Math.max(0, k - 3)],
+      b = longest[Math.min(longest.length - 1, k + 3)];
+    let angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+    // Keep text upright-ish.
+    if (angle > 90) angle -= 180;
+    if (angle < -90) angle += 180;
+    return { p: longest[k], angle };
+  }
   const b = bboxOf(piece);
-  return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  return { p: [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2], angle: 0 };
 }
 
 function frameScrews(
