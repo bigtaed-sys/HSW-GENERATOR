@@ -48,6 +48,14 @@ function load(): { project?: Project; ui?: Partial<UiState> } {
 
 export function migrate(p: Partial<Project>): Project {
   const d = defaultProject();
+  // v0.1 frames had a fixed profile instead of a style.
+  const f = p.frame as (Partial<Project['frame']> & { profile?: string; profileSize?: number }) | undefined;
+  if (f && f.profile && !f.style) {
+    f.style = 'classic';
+    f.styleParams = { classic: { profile: ['square', 'chamfer', 'round'].indexOf(f.profile), size: f.profileSize ?? 4 } };
+    f.lip = 0;
+    f.joint = 'none';
+  }
   return {
     ...d,
     ...p,

@@ -41,6 +41,17 @@ export interface LayoutInternal {
   frontZ: number;
   cuts: Cutout[];
   regions: Map<string, CrossSection>;
+  /** Inner edge of the frame lip (equals `inner` without a lip). */
+  lipInner: CrossSection;
+  lip: number;
+  frameParts: Map<string, FrameParts>;
+}
+
+/** A frame piece: full-height core plus half-height lap ends (top half at its start, bottom half at its end). */
+export interface FrameParts {
+  core: CrossSection;
+  high: CrossSection | null;
+  low: CrossSection | null;
 }
 
 function shapePolygon(project: Project): Vec2[] {
@@ -113,6 +124,9 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   const hasFrame = !honeycomb && frame.width > 0.01;
   const inner = hasFrame ? s.t(outer.offset(-frame.width, 'Round', 2, 96)) : outer;
+  // The lip is the part of the frame front that reaches over the panel edges.
+  const lip = hasFrame && frame.proud >= 1 ? Math.max(0, frame.lip) : 0;
+  const lipInner = lip > 0 ? s.t(inner.offset(-lip, 'Round', 2, 96)) : inner;
   if (hasFrame && inner.isEmpty()) warnings.push('warnFrameTooWide');
 
   const cuts = project.cutouts;
@@ -122,7 +136,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   const allRims = rimCS.length ? s.t(CS.union(rimCS)) : s.t(new CS([[]]));
 
   const gridRegion = s.t(inner.subtract(allCuts));
-  const allowedBase = honeycomb ? inner : s.t(inner.offset(-grid.minEdge, 'Round', 2, 48));
+  const allowedBase = honeycomb ? inner : s.t(inner.offset(-Math.max(grid.minEdge, lip > 0 ? lip + 1 : 0), 'Round', 2, 48));
   const allowed = s.t(allowedBase.subtract(allRims));
 
   // ---- Cells ---------------------------------------------------------------
@@ -245,17 +259,39 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   // ---- Frame pieces --------------------------------------------------------
   const frontZ = DEPTH + (hasFrame ? frame.proud : 0);
+  const frameParts = new Map<string, FrameParts>();
   if (hasFrame && !inner.isEmpty()) {
-    const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
-    const framePieces = splitFrame(K, s, outer, band, frame.width, usableW, usableH);
-    if (!framePieces) warnings.push('warnFrameSplit');
+    const band = s.t(s.t(outer.subtract(lipInner)).subtract(allCuts));
+    const lapLen = frame.joint === 'lap' ? Math.max(10, frame.jointLength) : 0;
+    const bandW = frame.width + lip;
+    const split = splitFrame(K, s, outer, band, bandW, usableW, usableH, lapLen);
+    if (!split) warnings.push('warnFrameSplit');
     const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
     const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
-    (framePieces ?? []).forEach((region, i) => {
+    const m = split?.pieces.length ?? 0;
+    const laps = lapLen && split && m > 1 ? split.cuts.map((c) => s.t(band.intersect(lapRect(K, s, c, lapLen, bandW)))) : [];
+    const lapScrews: Vec2[] = laps.length && screwOk
+      ? split!.cuts.map((c) => [c.p[0] - c.t[1] * (frame.width / 2), c.p[1] + c.t[0] * (frame.width / 2)] as Vec2)
+      : [];
+    (split?.pieces ?? []).forEach((region, i) => {
       const id = `f${i}`;
-      regions.set(id, region);
-      const polys = polysOf(region);
-      const screws = screwOk ? frameScrews(mid, polys, cuts, mount.headDiameter) : [];
+      let parts: FrameParts = { core: region, high: null, low: null };
+      if (laps.length) {
+        const start = laps[i],
+          end = laps[(i + 1) % m];
+        parts = { core: s.t(s.t(region.subtract(start)).subtract(end)), high: start, low: end };
+      }
+      const footprint = parts.high ? s.t(CS.union([parts.core, parts.high, parts.low!])) : region;
+      frameParts.set(id, parts);
+      regions.set(id, footprint);
+      const polys = polysOf(footprint);
+      const corePolys = polysOf(region);
+      const screws = screwOk
+        ? [
+            ...frameScrews(mid, corePolys, cuts, mount.headDiameter, lapScrews, lapLen),
+            ...(laps.length ? [lapScrews[i], lapScrews[(i + 1) % m]] : []),
+          ]
+        : [];
       pieces.push({
         id,
         kind: 'frame',
@@ -265,9 +301,9 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
         printAngle: null,
         printSize: [0, 0],
         holes: 0,
-        volume: (region.area() * frontZ) / 1000,
+        volume: (footprint.area() * frontZ) / 1000,
         screws,
-        anchor: frameAnchor(mid, polys),
+        anchor: frameAnchor(mid, corePolys),
       });
     });
   }
@@ -314,7 +350,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { layout, scope: s, outer, inner, gridRegion, allowed, hasFrame, frontZ, cuts, regions };
+  return { layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -407,6 +443,21 @@ function mountTargets(bbox: [number, number, number, number], n: number): Vec2[]
 
 // ---- Frame splitting -------------------------------------------------------
 
+export type FrameCut = { p: Vec2; t: Vec2; s: number };
+type Cut = FrameCut;
+export interface FrameSplit {
+  pieces: CrossSection[];
+  /** cuts[j] is where piece j starts; piece j ends at cuts[j + 1]. */
+  cuts: FrameCut[];
+}
+
+/** Rectangle centred on a cut, `len` long along the outline and covering the band across it. */
+export function lapRect(K: Kernel, s: Scope, c: FrameCut, len: number, width: number): CrossSection {
+  const n: Vec2 = [-c.t[1], c.t[0]]; // inward normal of a CCW outline
+  const pt = (a: number, b: number): Vec2 => [c.p[0] + c.t[0] * a + n[0] * b, c.p[1] + c.t[1] * a + n[1] * b];
+  return s.t(new K.CrossSection([ccw([pt(-len / 2, -10), pt(len / 2, -10), pt(len / 2, width + 10), pt(-len / 2, width + 10)])]));
+}
+
 interface Ring {
   pts: Vec2[];
   cum: number[];
@@ -461,10 +512,11 @@ function splitFrame(
   width: number,
   bedW: number,
   bedH: number,
-): CrossSection[] | null {
+  lapLen: number,
+): FrameSplit | null {
   const CS = K.CrossSection;
   const bandPolys = polysOf(band);
-  if (fitOnBed(bandPolys, bedW, bedH).angle !== null) return [band];
+  if (fitOnBed(bandPolys, bedW, bedH).angle !== null) return { pieces: [band], cuts: [] };
 
   const outerPolys = polysOf(outer);
   const main = outerPolys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a));
@@ -506,7 +558,6 @@ function splitFrame(
   };
   const angleOf = (p: Vec2) => Math.atan2(p[1] - C[1], p[0] - C[0]);
 
-  type Cut = { p: Vec2; t: Vec2; s: number };
   const build = (cuts: Cut[], radial: boolean) => {
     const m = cuts.length;
     const out: CrossSection[] = [];
@@ -534,7 +585,14 @@ function splitFrame(
     const total = pieces.reduce((a, p) => a + p.area(), 0);
     const broken = pieces.some((p) => p.isEmpty() || p.decompose().filter((d) => (s.t(d), d.area() > 1)).length > 1);
     if (Math.abs(total - bandArea) > bandArea * 0.002 || broken) pieces = build(cuts, true);
-    const fits = pieces.map((p) => fitOnBed(polysOf(p), bedW, bedH).angle !== null);
+    const fits = pieces.map((p, j) => {
+      let fp = p;
+      if (lapLen > 0) {
+        const laps = [cuts[j], cuts[(j + 1) % cuts.length]].map((c) => s.t(band.intersect(lapRect(K, s, c, lapLen, width))));
+        fp = s.t(CS.union([p, ...laps]));
+      }
+      return fitOnBed(polysOf(fp), bedW, bedH).angle !== null;
+    });
     return { pieces, fits, cuts };
   };
 
@@ -560,7 +618,7 @@ function splitFrame(
         continue;
       }
       const res = tryCuts(cuts);
-      if (res.fits.every(Boolean)) return res.pieces;
+      if (res.fits.every(Boolean)) return { pieces: res.pieces, cuts: res.cuts };
       const grow = new Set<number>();
       res.fits.forEach((ok, j) => {
         if (ok) return;
@@ -589,7 +647,7 @@ function splitFrame(
     }
     const cuts = Array.from({ length: m }, (_, j) => ({ ...pointAt(rg, bestPhase + j * step), s: (bestPhase + j * step) % rg.length }));
     const res = tryCuts(cuts);
-    if (res.fits.every(Boolean)) return res.pieces;
+    if (res.fits.every(Boolean)) return { pieces: res.pieces, cuts: res.cuts };
   }
   return null;
 }
@@ -624,9 +682,20 @@ function frameAnchor(mid: Vec2[][], piece: Vec2[][]): Vec2 {
   return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
 }
 
-function frameScrews(mid: Vec2[][], piece: Vec2[][], cuts: Cutout[], head: number): Vec2[] {
-  const { runs, stepLen } = midRuns(mid, piece, (p) =>
-    cuts.some((c) => Math.abs(p[0] - c.x) < c.w / 2 + c.rim + head && Math.abs(p[1] - c.y) < c.h / 2 + c.rim + head),
+function frameScrews(
+  mid: Vec2[][],
+  piece: Vec2[][],
+  cuts: Cutout[],
+  head: number,
+  avoid: Vec2[] = [],
+  avoidDist = 0,
+): Vec2[] {
+  const { runs, stepLen } = midRuns(
+    mid,
+    piece,
+    (p) =>
+      cuts.some((c) => Math.abs(p[0] - c.x) < c.w / 2 + c.rim + head && Math.abs(p[1] - c.y) < c.h / 2 + c.rim + head) ||
+      avoid.some((a) => Math.hypot(a[0] - p[0], a[1] - p[1]) < avoidDist / 2 + 25),
   );
   const out: Vec2[] = [];
   for (const run of runs) {

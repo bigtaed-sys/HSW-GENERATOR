@@ -69,7 +69,8 @@ export const geometry = {
     format: 'stl' | '3mf',
     include: { panels: boolean; frame: boolean; accessories: boolean },
     names: Record<string, string>,
-  ) => call<{ data: Uint8Array; filename: string }>({ type: 'export', project, format, include, names }),
+    testKit = false,
+  ) => call<{ data: Uint8Array; filename: string }>({ type: 'export', project, format, include, names, testKit }),
   onProgress(fn: (id: number, done: number, total: number) => void) {
     progressListeners.add(fn);
     return () => progressListeners.delete(fn);

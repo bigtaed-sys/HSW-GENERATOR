@@ -1,14 +1,17 @@
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { DEPTH } from '../geometry/constants';
-import { cellCenter } from '../geometry/lattice';
+import { cellAt, cellCenter } from '../geometry/lattice';
+import { defaultParams } from '../geometry/accessories/defs';
+import { PALETTE } from '../model/defaults';
+import { cellIndex, isPlacementValid } from '../model/placement';
 import type { MeshData } from '../geometry/layoutTypes';
 import { useT } from '../i18n';
-import { shapeKey, useGeo } from '../model/geo';
-import { useStore } from '../model/store';
+import { ensureShape, shapeKey, useGeo } from '../model/geo';
+import { uid, useStore } from '../model/store';
 import { preparedModel } from './customModel';
 
 const geomCache = new WeakMap<MeshData, THREE.BufferGeometry>();
@@ -139,10 +142,14 @@ function Scene() {
               position={[x, y, DEPTH + (exploded ? 60 : 0)]}
               castShadow
               receiveShadow
-              onClick={(e) => {
+              onPointerDown={(e) => {
+                if (e.button !== 0 || useStore.getState().placing) return;
                 e.stopPropagation();
                 setUi({ selection: { kind: 'accessory', id: a.id }, rightTab: 'inspector' });
+                startDrag(a.id, e.point.x - x, e.point.y - y);
               }}
+              onPointerOver={() => (document.body.style.cursor = 'grab')}
+              onPointerOut={() => (document.body.style.cursor = '')}
             >
               <meshStandardMaterial color={a.color} roughness={0.55} emissive={sel ? '#f2a93b' : '#000'} emissiveIntensity={sel ? 0.25 : 0} />
             </mesh>
@@ -154,7 +161,139 @@ function Scene() {
           return <CustomMesh key={m.id} id={m.id} position={[x + m.offset[0], y + m.offset[1], DEPTH + m.offset[2] + (exploded ? 60 : 0)]} />;
         })}
       <OrbitControls makeDefault enableDamping dampingFactor={0.12} maxDistance={Math.max(w, h) * 6} />
+      <Interaction />
     </>
+  );
+}
+
+// ---- Placing and dragging accessories on the wall ------------------------------
+
+const drag3d: { id: string | null; grab: [number, number]; moved: boolean } = { id: null, grab: [0, 0], moved: false };
+/** Set when a pointer-up already handled the click, so the canvas does not also clear the selection. */
+let clickHandled = false;
+let dragStarted: (() => void) | null = null;
+
+function startDrag(id: string, gx: number, gy: number) {
+  useStore.getState().checkpoint();
+  drag3d.id = id;
+  drag3d.grab = [gx, gy];
+  drag3d.moved = false;
+  dragStarted?.();
+}
+
+const wallPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -DEPTH);
+
+/** Handles pointer input against the wall front plane: placement ghost, click-to-place and dragging. */
+function Interaction() {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls) as unknown as OrbitControlsImpl | null;
+  const placing = useStore((s) => s.placing);
+  const grid = useStore((s) => s.project.grid);
+  const accessories = useStore((s) => s.project.accessories);
+  const layout = useGeo((s) => s.layout);
+  const shapes = useGeo((s) => s.shapes);
+  const [hover, setHover] = useState<{ c: number; r: number } | null>(null);
+  const index = useMemo(() => cellIndex(layout), [layout]);
+
+  useEffect(() => {
+    dragStarted = () => {
+      if (controls) controls.enabled = false;
+      document.body.style.cursor = 'grabbing';
+    };
+    return () => {
+      dragStarted = null;
+    };
+  }, [controls]);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const ray = new THREE.Raycaster();
+    const hit = new THREE.Vector3();
+    const worldAt = (e: PointerEvent): [number, number] | null => {
+      const r = el.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+      return ray.ray.intersectPlane(wallPlane, hit) ? [hit.x, hit.y] : null;
+    };
+    let down: { x: number; y: number } | null = null;
+    const onMove = (e: PointerEvent) => {
+      const w = worldAt(e);
+      if (!w) return;
+      const st = useStore.getState();
+      if (drag3d.id) {
+        const cell = cellAt(w[0] - drag3d.grab[0], w[1] - drag3d.grab[1], st.project.grid);
+        const cur = st.project.accessories.find((a) => a.id === drag3d.id);
+        if (cur && (cur.c !== cell.c || cur.r !== cell.r)) {
+          drag3d.moved = true;
+          st.update(
+            (p) => {
+              const a = p.accessories.find((q) => q.id === drag3d.id);
+              if (a) {
+                a.c = cell.c;
+                a.r = cell.r;
+              }
+            },
+            { transient: true },
+          );
+        }
+      } else if (st.placing) {
+        const cell = cellAt(w[0], w[1], st.project.grid);
+        setHover((h) => (h && h.c === cell.c && h.r === cell.r ? h : cell));
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      clickHandled = false;
+    };
+    const onUp = (e: PointerEvent) => {
+      const st = useStore.getState();
+      if (drag3d.id) {
+        clickHandled = true;
+        if (drag3d.moved) st.update(() => {});
+        drag3d.id = null;
+        if (controls) controls.enabled = true;
+        document.body.style.cursor = '';
+        return;
+      }
+      // A click (not an orbit drag) while placing drops the accessory on the cell under the cursor.
+      if (st.placing && down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5 && e.button === 0) {
+        const w = worldAt(e);
+        if (w) {
+          clickHandled = true;
+          const cell = cellAt(w[0], w[1], st.project.grid);
+          const id = uid();
+          const type = st.placing;
+          st.update((p) => void p.accessories.push({ id, type, c: cell.c, r: cell.r, params: defaultParams(type), color: PALETTE[p.accessories.length % 7] }));
+          st.setUi({ placing: e.shiftKey ? type : null, selection: { kind: 'accessory', id }, rightTab: 'inspector' });
+        }
+      }
+      down = null;
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [camera, gl, controls]);
+
+  useEffect(() => {
+    if (!placing) setHover(null);
+    else ensureShape(placing, defaultParams(placing));
+  }, [placing]);
+
+  if (!placing || !hover) return null;
+  const params = defaultParams(placing);
+  const shape = shapes[shapeKey(placing, params)];
+  if (!shape) return null;
+  const valid = isPlacementValid({ id: '', type: placing, c: hover.c, r: hover.r, params }, index, accessories);
+  const [x, y] = cellCenter(hover.c, hover.r, grid);
+  return (
+    <mesh geometry={toGeometry(shape.mesh)} position={[x, y, DEPTH]} raycast={() => null}>
+      <meshStandardMaterial color={valid ? '#f2a93b' : '#e5484d'} transparent opacity={0.55} depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -187,7 +326,10 @@ export function Viewer3D() {
         camera={{ fov: 35, position: [0, 0, 1200], up: [0, 1, 0] }}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
         style={{ position: 'absolute', inset: 0, background: bg }}
-        onPointerMissed={() => useStore.getState().setUi({ selection: null })}
+        onPointerMissed={() => {
+          if (!clickHandled) useStore.getState().setUi({ selection: null });
+          clickHandled = false;
+        }}
       >
         <color attach="background" args={[bg]} />
         <Scene />

@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { PALETTE } from '../model/defaults';
 import { useStore } from '../model/store';
-import type { Project } from '../model/types';
+import type { Lang, Project } from '../model/types';
+import type { ParamDef } from '../geometry/params';
 
 /** Binds a numeric project field to a slider: live preview while dragging, one undo step per gesture. */
 export function useBind() {
@@ -174,5 +175,35 @@ export function Swatches({ value, onChange }: { value: string; onChange: (v: str
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
       </label>
     </div>
+  );
+}
+
+/** Slider or segmented choice for a catalogue parameter. */
+export function ParamControl({
+  def,
+  value,
+  lang,
+  onChange,
+}: {
+  def: ParamDef;
+  value: number;
+  lang: Lang;
+  onChange: (v: number, transient?: boolean) => void;
+}) {
+  if (def.options)
+    return (
+      <div className="field">
+        <div className="field-head">
+          <span>{def.label[lang]}</span>
+        </div>
+        <Segmented
+          value={String(value)}
+          onChange={(v) => onChange(Number(v))}
+          options={def.options.map((o) => ({ value: String(o.value), label: o.label[lang] }))}
+        />
+      </div>
+    );
+  return (
+    <Slider label={def.label[lang]} value={value} min={def.min} max={def.max} step={def.step} unit={def.unit} onChange={onChange} />
   );
 }

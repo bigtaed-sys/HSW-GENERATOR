@@ -20,6 +20,9 @@ describe('splitEven', () => {
 describe('layout', () => {
   it('splits default wall into printable panels and frame pieces', () => {
     const p = defaultProject();
+    // Without overlaps (lip, lap joints) the pieces must tile the outline exactly.
+    p.frame.lip = 0;
+    p.frame.joint = 'none';
     const t = performance.now();
     const L = computeLayout(K, p);
     const ms = performance.now() - t;

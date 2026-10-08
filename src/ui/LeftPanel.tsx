@@ -5,8 +5,9 @@ import { useT, type TKey } from '../i18n';
 import { PRINTERS } from '../model/defaults';
 import { useGeo } from '../model/geo';
 import { uid, useStore } from '../model/store';
-import type { EdgeProfile, WallShape } from '../model/types';
-import { NumberInput, Section, Segmented, Slider, Swatches, Toggle, useBind } from './controls';
+import type { WallShape } from '../model/types';
+import { FRAME_STYLES, frameStyle, frameStyleParams } from '../geometry/frames/styles';
+import { NumberInput, ParamControl, Section, Segmented, Slider, Swatches, Toggle, useBind } from './controls';
 
 type Tab = 'wall' | 'frame' | 'grid' | 'cutouts' | 'print';
 
@@ -133,6 +134,7 @@ function WallTab() {
 
 function FrameTab() {
   const t = useT();
+  const lang = useStore((s) => s.lang);
   const frame = useStore((s) => s.project.frame);
   const shape = useStore((s) => s.project.wall.shape);
   const color = useStore((s) => s.project.colors.frame);
@@ -140,6 +142,13 @@ function FrameTab() {
   const bind = useBind();
   if (shape === 'honeycomb') return <p className="hint">{t('frameDisabled')}</p>;
   const has = frame.width > 0;
+  const style = frameStyle(frame.style);
+  const params = frameStyleParams(frame);
+  const setParam = (key: string) => (v: number, transient?: boolean) =>
+    update((p) => {
+      const id = p.frame.style;
+      p.frame.styleParams[id] = { ...p.frame.styleParams[id], [key]: v };
+    }, { transient });
   return (
     <>
       <Section title={t('tabFrame')}>
@@ -148,23 +157,48 @@ function FrameTab() {
       </Section>
       {has && (
         <>
-          <Section title={t('frameProfile')}>
-            <Segmented<EdgeProfile>
-              value={frame.profile}
-              onChange={(v) => update((p) => void (p.frame.profile = v))}
+          <Section title={t('frameStyle')}>
+            <div className="shape-grid">
+              {FRAME_STYLES.map((st) => (
+                <button
+                  key={st.id}
+                  className={`shape-card ${frame.style === st.id ? 'on' : ''}`}
+                  onClick={() => update((p) => void (p.frame.style = st.id))}
+                >
+                  <svg width="44" height="30" viewBox="0 0 20 20">
+                    <path d={st.icon} fill="currentColor" fillOpacity={0.2} stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+                  </svg>
+                  {st.name[lang]}
+                </button>
+              ))}
+            </div>
+          </Section>
+          <Section title={style.name[lang]}>
+            {style.params.map((pd) => (
+              <ParamControl key={pd.key} def={pd} value={params[pd.key]} lang={lang} onChange={setParam(pd.key)} />
+            ))}
+          </Section>
+          <Section title={t('frameFit')}>
+            <Slider label={t('proud')} value={frame.proud} min={0} max={12} step={0.5} onChange={bind((p, v) => (p.frame.proud = v))} />
+            <Slider label={t('lip')} value={frame.lip} min={0} max={10} step={0.5} onChange={bind((p, v) => (p.frame.lip = v))} />
+            {frame.lip > 0 && frame.proud < 1 && <p className="hint warn">{t('lipNeedsProud')}</p>}
+            <Slider label={t('innerChamfer')} value={frame.innerChamfer} min={0} max={4} step={0.2} onChange={bind((p, v) => (p.frame.innerChamfer = v))} />
+          </Section>
+          <Section title={t('frameJoints')}>
+            <Segmented
+              value={frame.joint}
+              onChange={(v) => update((p) => void (p.frame.joint = v))}
               options={[
-                { value: 'square', label: <ProfileIcon kind="square" />, title: t('profileSquare') },
-                { value: 'chamfer', label: <ProfileIcon kind="chamfer" />, title: t('profileChamfer') },
-                { value: 'round', label: <ProfileIcon kind="round" />, title: t('profileRound') },
+                { value: 'none', label: t('jointNone') },
+                { value: 'lap', label: t('jointLap') },
               ]}
             />
             <div style={{ height: 12 }} />
-            {frame.profile !== 'square' && (
-              <Slider label={t('profileSize')} value={frame.profileSize} min={0.5} max={10} step={0.5} onChange={bind((p, v) => (p.frame.profileSize = v))} />
+            {frame.joint === 'lap' && (
+              <Slider label={t('jointLength')} value={frame.jointLength} min={20} max={80} onChange={bind((p, v) => (p.frame.jointLength = v))} />
             )}
-            <Slider label={t('proud')} value={frame.proud} min={0} max={12} step={0.5} onChange={bind((p, v) => (p.frame.proud = v))} />
-            <Slider label={t('innerChamfer')} value={frame.innerChamfer} min={0} max={4} step={0.2} onChange={bind((p, v) => (p.frame.innerChamfer = v))} />
             <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
+            <p className="hint">{t('frameJointHint')}</p>
           </Section>
           <Section title={t('frameColor')}>
             <Swatches value={color} onChange={(v) => update((p) => void (p.colors.frame = v))} />
@@ -172,19 +206,6 @@ function FrameTab() {
         </>
       )}
     </>
-  );
-}
-
-function ProfileIcon({ kind }: { kind: EdgeProfile }) {
-  const d = {
-    square: 'M3 16 V4 H17 V16',
-    chamfer: 'M3 16 V4 H11 L17 10 V16',
-    round: 'M3 16 V4 H10 A7 7 0 0 1 17 11 V16',
-  }[kind];
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20">
-      <path d={d} fill="currentColor" fillOpacity={0.18} stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
   );
 }
 

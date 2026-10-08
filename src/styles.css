@@ -1082,3 +1082,11 @@ input[type='range']::-moz-range-thumb {
     padding: 0 8px;
   }
 }
+.hint.warn {
+  color: var(--danger);
+}
+.kit-card {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  margin-bottom: 16px;
+}
