@@ -1,4 +1,4 @@
-import { Download, FileBox, FileImage, X } from 'lucide-react';
+import { Download, FileBox, FileImage, FlaskConical, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { accessoryDef } from '../geometry/accessories/defs';
 import { geometry } from '../geometry/client';
@@ -33,12 +33,14 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     accessories: project.accessories.length,
   };
 
-  const run = async () => {
+  const run = async (testKit = false) => {
     const names: Record<string, string> = { panel: t('panelName'), frame: t('frameName') };
     for (const a of project.accessories) names[a.type] = accessoryDef(a.type)?.name[lang] ?? a.type;
     setError(null);
     setProgress({ d: 0, t: 1 });
-    const job = geometry.export(project, format, { ...include, frame: include.frame && hasFrame }, names);
+    names.cap = names.cap ?? accessoryDef('cap')?.name[lang] ?? 'cap';
+    names.hook = names.hook ?? accessoryDef('hook')?.name[lang] ?? 'hook';
+    const job = geometry.export(project, format, { ...include, frame: include.frame && hasFrame }, names, testKit);
     setJobId(job.id);
     try {
       const { data, filename } = await job.promise;
@@ -67,6 +69,20 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="modal-body">
+          <div className="card kit-card">
+            <div className="card-head">
+              <span>
+                <FlaskConical size={15} style={{ verticalAlign: -2, marginRight: 6 }} />
+                {t('testKit')}
+              </span>
+              <button className="btn small" onClick={() => run(true)} disabled={!!progress || !layout}>
+                <Download size={13} /> {t('testKitDownload')}
+              </button>
+            </div>
+            <p className="hint" style={{ margin: 0 }}>
+              {t('testKitHint')}
+            </p>
+          </div>
           <div className="option-list" style={{ marginBottom: 16 }}>
             {(['stl', '3mf'] as const).map((f) => (
               <label key={f} className={`option ${format === f ? 'on' : ''}`}>
@@ -101,7 +117,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             <FileImage size={15} /> {t('assemblySheet')}
           </button>
           <div className="spacer" />
-          <button className="btn primary" onClick={run} disabled={!!progress || !layout}>
+          <button className="btn primary" onClick={() => run()} disabled={!!progress || !layout}>
             {progress ? (
               t('exporting', { d: progress.d, t: progress.t })
             ) : (

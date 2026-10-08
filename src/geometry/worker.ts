@@ -4,6 +4,7 @@ import wasmUrl from 'manifold-3d/manifold.wasm?url';
 import { strToU8, zipSync } from 'fflate';
 import type { Project } from '../model/types';
 import { meshToStl } from '../export/stl';
+import { makeTestKit } from '../model/testKit';
 import { meshesTo3mf } from '../export/threemf';
 import { buildAccessory } from './accessories/build';
 import { accessoryDef } from './accessories/defs';
@@ -24,6 +25,8 @@ export type WorkerRequest =
       format: 'stl' | '3mf';
       include: { panels: boolean; frame: boolean; accessories: boolean };
       names: Record<string, string>;
+      /** Export the small fit-test kit instead of the wall. */
+      testKit?: boolean;
     };
 
 export type WorkerResponse =
@@ -188,7 +191,9 @@ async function handle(msg: WorkerRequest) {
       break;
     }
     case 'export': {
-      const { project, include, names } = msg;
+      const { names } = msg;
+      const project = msg.testKit ? makeTestKit(msg.project) : msg.project;
+      const include = msg.testKit ? { panels: true, frame: true, accessories: true } : msg.include;
       const L = layoutFor(project);
       const items: { name: string; mesh: MeshData }[] = [];
       const pieces = L.layout.pieces.filter((p) => (p.kind === 'panel' ? include.panels : include.frame));

@@ -4,7 +4,6 @@
 export type Lang = 'ru' | 'en';
 
 export type WallShape = 'rect' | 'hexagon' | 'ellipse' | 'honeycomb';
-export type EdgeProfile = 'square' | 'chamfer' | 'round';
 export type CellMode = 'whole' | 'partial';
 export type CellOverride = 'solid' | 'mount' | 'open';
 
@@ -15,13 +14,21 @@ export interface WallSettings {
   cornerRadius: number;
 }
 
+export type FrameJoint = 'none' | 'lap';
+
 export interface FrameSettings {
   width: number; // 0 = no frame
-  profile: EdgeProfile;
-  profileSize: number;
+  /** Frame style id from the style registry (geometry/frames/styles.ts). */
+  style: string;
+  /** Parameters of the selected style. Kept per style so switching back restores them. */
+  styleParams: Record<string, Record<string, number>>;
   proud: number; // how far the frame front stands out over the grid front
+  /** How far the frame front overlaps the panel edges (needs `proud`). */
+  lip: number;
   innerChamfer: number;
   screws: boolean;
+  joint: FrameJoint;
+  jointLength: number;
 }
 
 export interface GridSettings {

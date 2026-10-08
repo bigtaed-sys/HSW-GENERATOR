@@ -2,10 +2,14 @@ import type { Cutout, Project } from '../model/types';
 import { DEPTH, HOLE_PROFILE } from './constants';
 import { Scope, type CrossSection, type Kernel, type Manifold } from './kernel';
 import { hexagon } from './lattice';
+import { buildFrameStyle } from './frames/build';
+import { frameStyleParams } from './frames/styles';
 import { roundedRect, type LayoutInternal } from './layout';
 import type { MeshData } from './layoutTypes';
 
 const EPS = 0.02;
+/** Height where lap joints split a frame piece. */
+const LAP_Z = DEPTH / 2;
 
 /** One HSW hole as a cutting tool, built from convex frusta of the hole profile. */
 export function holeTool(K: Kernel, s: Scope): Manifold {
@@ -49,28 +53,16 @@ function cutoutTools(K: Kernel, s: Scope, cuts: Cutout[], frontZ: number): Manif
   return cuts.map((c) => chamferedCut(K, s, roundedRect(K, s, c.x, c.y, c.w, c.h, c.r), frontZ, c.chamfer));
 }
 
-/** Outer body of the frame with the selected front-edge profile (outline must be convex). */
-function profiledOuter(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Manifold {
-  const { Manifold } = K;
-  const { profile } = project.frame;
-  const H = L.frontZ;
-  const p = Math.max(0, Math.min(project.frame.profileSize, project.frame.width - 1, H - 1));
-  if (profile === 'square' || p < 0.2) return s.t(s.t(L.outer.extrude(H + EPS)).translate([0, 0, -EPS / 2]));
-  const layer = (inset: number, z: number) =>
-    s.t(s.t(s.t(inset > 0 ? s.t(L.outer.offset(-inset, 'Round', 2, 96)) : L.outer).extrude(0.001)).translate([0, 0, z]));
-  const layers: Manifold[] = [layer(0, -EPS), layer(0, H - p)];
-  if (profile === 'chamfer') layers.push(layer(p, H - 0.001));
-  else
-    for (let i = 1; i <= 8; i++) {
-      const a = (Math.PI / 2) * (i / 8);
-      layers.push(layer(p * (1 - Math.cos(a)), H - p + p * Math.sin(a) - (i === 8 ? 0.001 : 0)));
-    }
-  return s.t(Manifold.hull(layers));
+/** Space the frame leaves for the panels: up to the panel front at the inner edge, above it only inside the lip. */
+function innerCut(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Manifold {
+  const front = chamferedCut(K, s, L.lipInner, L.frontZ, project.frame.innerChamfer);
+  if (L.lip <= 0) return front;
+  // Under the lip: room for the panel edge plus a little clearance.
+  const under = s.t(s.t(L.inner.extrude(DEPTH + LIP_CLEARANCE + 1)).translate([0, 0, -1]));
+  return s.t(K.Manifold.union([front, under]));
 }
 
-function innerCut(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Manifold {
-  return chamferedCut(K, s, L.inner, L.frontZ, project.frame.innerChamfer);
-}
+const LIP_CLEARANCE = 0.2;
 
 function screwTool(K: Kernel, s: Scope, project: Project, frontZ: number): Manifold {
   const { Manifold } = K;
@@ -125,7 +117,14 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
     // Frame piece
     const outer = cache.get('outer')!;
     const inner = cache.get('inner')!;
-    const clip = s.t(s.t(region.extrude(L.frontZ + 4)).translate([0, 0, -2]));
+    const parts = L.frameParts.get(id)!;
+    const H = L.frontZ + 4;
+    const prism = (cs: CrossSection, z0: number, z1: number) => s.t(s.t(cs.extrude(z1 - z0)).translate([0, 0, z0]));
+    const clips = [prism(parts.core, -2, H)];
+    // Lap joints: the piece's start overlaps the previous piece from the front, its end sits underneath the next one.
+    if (parts.high) clips.push(prism(parts.high, LAP_Z, H));
+    if (parts.low) clips.push(prism(parts.low, -2, LAP_Z));
+    const clip = s.t(Manifold.union(clips));
     let body = s.t(s.t(outer.intersect(clip)).subtract(inner));
     for (const t of cutoutTools(K, s, L.cuts, L.frontZ)) body = s.t(body.subtract(t));
     if (piece.screws.length) {
@@ -145,7 +144,18 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
   cache.set('hole', hole);
   cache.set('mount', mountTool(K, s, project, hole));
   if (L.hasFrame) {
-    cache.set('outer', profiledOuter(K, s, L, project));
+    cache.set(
+      'outer',
+      buildFrameStyle({
+        K,
+        s,
+        style: project.frame.style,
+        outer: L.outer,
+        width: project.frame.width + L.lip,
+        frontZ: L.frontZ,
+        p: frameStyleParams(project.frame),
+      }),
+    );
     cache.set('inner', innerCut(K, s, L, project));
     cache.set('screw', screwTool(K, s, project, L.frontZ));
   }

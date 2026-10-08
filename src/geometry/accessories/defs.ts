@@ -1,14 +1,8 @@
 // Accessory catalogue. Pure data (no geometry kernel) so the UI can import it.
 
-export interface ParamDef {
-  key: string;
-  label: { ru: string; en: string };
-  min: number;
-  max: number;
-  step: number;
-  def: number;
-  unit?: string;
-}
+import { param as P, type ParamDef } from '../params';
+
+export type { ParamDef };
 
 export interface AccessoryDef {
   type: string;
@@ -22,17 +16,6 @@ export interface AccessoryDef {
   /** Rotation (degrees about X, Y, Z) that lays the part on the print bed. Defaults to lying on its side. */
   printRot?: [number, number, number];
 }
-
-const P = (
-  key: string,
-  ru: string,
-  en: string,
-  min: number,
-  max: number,
-  def: number,
-  step = 1,
-  unit = 'mm',
-): ParamDef => ({ key, label: { ru, en }, min, max, def, step, unit });
 
 /** Horizontally spaced pegs are two columns apart so they stay on the same lattice row. */
 const rowPegs = (n: number): [number, number][] => Array.from({ length: Math.max(1, Math.round(n)) }, (_, i) => [i * 2, 0]);
