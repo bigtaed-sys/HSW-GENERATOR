@@ -68,7 +68,17 @@ npm test         # geometry tests (layout, watertight solids)
 npm run build    # production build in dist/
 ```
 
-The app is a static site, built with TypeScript, React, Three.js (react-three-fiber) and [manifold-3d](https://github.com/elalish/manifold) (WASM CSG). All geometry runs in a Web Worker. Pushing to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`. For the first deploy, enable *Settings → Pages → Source: GitHub Actions* in the repository.
+The app is a static site, built with TypeScript, React, Three.js (react-three-fiber) and [manifold-3d](https://github.com/elalish/manifold) (WASM CSG). All geometry runs in a Web Worker.
+
+### Publishing on GitHub Pages
+
+The ready-to-serve build is committed in `docs/`. After changing the code, rebuild it:
+
+```bash
+npm run build:pages   # writes docs/ (plus docs/.nojekyll)
+```
+
+In the repository, set *Settings → Pages → Build and deployment → Source: Deploy from a branch*, then pick *Branch: `main`* and *folder: `/docs`*.
 
 ### Geometry
 
