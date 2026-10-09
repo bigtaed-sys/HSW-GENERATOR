@@ -52,8 +52,10 @@ export interface LayoutInternal {
   frameBands: Map<string, CrossSection>;
   /** Pockets of the decorative frame pattern (2D), cut into the frame front. */
   pattern: FramePattern | null;
-  /** Backlit cells: patches behind the frame seams. */
+  /** Backlit cells: patches that fill the groove floor across each seam. */
   plates: CrossSection[];
+  /** Backlit cells: the pockets in the plate underside the patches sit in. */
+  seats: CrossSection[];
 }
 
 /** A frame piece: full-height core plus half-height lap ends lying on top of (high) or under (low) its neighbours. */
@@ -511,16 +513,20 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     ? framePattern(K, s, project, outer, inner, lipInner, cuts, cutCS, pieces.flatMap((p) => p.screws), [...frameParts.values()].flatMap((f) => [...f.high, ...f.low]))
     : null;
 
-  // Patches glued behind the seams of a Backlit cells frame, under the front plate.
+  // Backlit cells seams: a pocket in the underside of the plate along each seam, as deep as the
+  // groove floor, so the groove there has no floor of its own; a patch as thick as the floor
+  // sits flush in it, becomes the groove floor across the seam and holds the two parts together.
   const plates: CrossSection[] = [];
+  const seats: CrossSection[] = [];
   if (pattern?.hollow) {
-    const room = s.t(pattern.hollow.offset(-0.3, 'Miter'));
     const w = Math.max(6, frameStyleParams(frame).patchWidth ?? 16);
     for (const { c, width } of seams) {
       const seam = seamPath(K, s, c, width, grid, 0.05);
       if (!seam) continue;
-      const plate = s.t(s.t(seam.offset(w / 2, 'Miter')).intersect(room));
-      if (plate.area() > 20) plates.push(plate);
+      const seat = s.t(s.t(seam.offset(w / 2, 'Miter')).intersect(pattern.hollow));
+      if (seat.area() < 20) continue;
+      seats.push(seat);
+      plates.push(s.t(seat.offset(-PATCH_CLEARANCE, 'Miter')));
     }
   }
 
@@ -561,7 +567,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands, pattern, plates };
+  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands, pattern, plates, seats };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -1364,6 +1370,9 @@ function ledLayout(
     return { kind: 'front', path, z0: frontZ - d + 0.3, z1: frontZ - d + 0.3, width: strip, length: perimeter(path), wire: led.wire ? low(path) : null, leds };
   return { kind: 'halo', path, z0: d - 0.3, z1: d - 0.3, width: strip, length: perimeter(path), wire: low(path), leds };
 }
+
+/** Gap around a seam patch in its pocket. */
+const PATCH_CLEARANCE = 0.15;
 
 /** Backlit cells: free width along the outer wall of the hollow for the LED strip. */
 const LED_LANE = 14;
