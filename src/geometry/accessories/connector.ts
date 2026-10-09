@@ -45,17 +45,34 @@ export function buildConnector(
         if (adj(offs[i], offs[k]) && adj(offs[j], offs[k])) parts.push(centrePlate([offs[i], offs[j], offs[k]]));
     }
 
-  // Screw insert: solid plug from below the lip to the top, countersunk hole through.
-  const plug = s.t(s.t(s.t(new CS([hexagon(INSERT.bore + 0.4)])).extrude(L + 3)).translate([0, 0, -3]));
+  // Screw insert (after PStover's HSW connectors): plugged, with a counterbore
+  // for the head, a rounded seat narrowing to the shaft, and a shallow
+  // hexagonal groove around the lip top.
+  const plug = s.t(s.t(s.t(new CS([hexagon(INSERT.bore + 0.4)])).extrude(L + 3.8)).translate([0, 0, -3.8]));
   parts.push(plug);
   let body = s.t(Manifold.union(parts));
   const r = screw.d / 2 + 0.2;
-  const R = screw.head / 2 + 0.3;
-  const sink = Math.max(0.5, R - r);
+  const R = Math.max(5.05, screw.head / 2 + 0.6); // counterbore radius
+  const bore = 3; // counterbore depth from the lip top
+  const floor = L - bore;
   const shaft = s.t(s.t(Manifold.cylinder(INSERT.length + L + 4, r, r, 32)).translate([0, 0, -INSERT.length - 2]));
-  const cone = s.t(s.t(Manifold.cylinder(sink + 0.01, r, R, 48)).translate([0, 0, L - sink]));
-  const cap = s.t(s.t(Manifold.cylinder(1, R, R, 48)).translate([0, 0, L - 0.001]));
-  body = s.t(body.subtract(s.t(Manifold.union([shaft, cone, cap]))));
+  const counterbore = s.t(s.t(Manifold.cylinder(bore + 1, R, R, 64)).translate([0, 0, floor]));
+  // Rounded seat: a spherical-cap-like taper from just under the counterbore to the shaft.
+  const seatTop = Math.min(R - 0.4, screw.head / 2 + 0.45);
+  const seatDepth = Math.min(2.6, floor + 3.6);
+  const seat = s.t(
+    Manifold.hull(
+      Array.from({ length: 7 }, (_, i) => {
+        const t = i / 6;
+        const rad = r + (seatTop - r) * Math.sqrt(1 - t * t);
+        return s.t(s.t(Manifold.cylinder(0.01, rad, rad, 48)).translate([0, 0, floor - seatDepth * t]));
+      }),
+    ),
+  );
+  const ring = s.t(
+    s.t(s.t(s.t(new CS([hexagon(18.5)])).subtract(s.t(new CS([hexagon(16.5)])))).extrude(1.3)).translate([0, 0, L - 0.3]),
+  );
+  body = s.t(body.subtract(s.t(Manifold.union([shaft, counterbore, seat, ring]))));
   // Open bores through every non-screw insert.
   const bores = offs
     .slice(1)

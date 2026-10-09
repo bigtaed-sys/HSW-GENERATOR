@@ -255,6 +255,13 @@ async function handle(msg: WorkerRequest) {
       } else {
         const files: Record<string, Uint8Array> = {};
         for (const it of items) files[`${safe(it.name)}.stl`] = meshToStl(it.mesh, it.name);
+        if (items.some((it) => it.name.startsWith(names.connector ?? 'connector')))
+          files['CREDITS.txt'] = strToU8(
+            'Connector parts: design adapted from PStover\'s HSW connectors, licensed CC BY-NC 4.0\n' +
+              '(https://creativecommons.org/licenses/by-nc/4.0/). Non-commercial use only.\n' +
+              'Honeycomb Storage Wall: original design by RostaP.\n' +
+              'Generated with HSW Studio.\n',
+          );
         files['project.hsw.json'] = strToU8(JSON.stringify({ ...project, customModels: [] }, null, 2));
         data = zipSync(files, { level: 6 });
         ctx.postMessage({ type: 'export', id: msg.id, data, filename: `${base}.zip` } satisfies WorkerResponse, [data.buffer]);
