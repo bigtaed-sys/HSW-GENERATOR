@@ -119,7 +119,8 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
   try {
     const piece = L.layout.pieces.find((p) => p.id === id)!;
     if (piece.kind === 'panel') {
-      let body = s.t(region.extrude(DEPTH));
+      const band = L.frameBands.get(id);
+      let body = s.t((band ? s.t(region.subtract(band)) : region).extrude(DEPTH));
       const hole = cache.get('hole')!;
       const mount = cache.get('mount')!;
       const cells = L.layout.cells.filter((c) => c.panel === id && c.kind !== 'solid');
@@ -134,8 +135,26 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
       }
       const [x0, y0, x1, y1] = piece.bbox;
       const near = L.cuts.filter((c) => c.x + c.w / 2 + c.chamfer > x0 && c.x - c.w / 2 - c.chamfer < x1 && c.y + c.h / 2 + c.chamfer > y0 && c.y - c.h / 2 - c.chamfer < y1);
+      if (band) {
+        // Integrated frame: this panel's share of the styled frame, joined to the cells.
+        const H = L.frontZ + 4;
+        const clip = s.t(s.t(band.extrude(H + 2)).translate([0, 0, -2]));
+        let framePart = s.t(s.t(cache.get('outer')!.intersect(clip)).subtract(cache.get('inner')!));
+        for (const t of cutoutTools(K, s, near, L.frontZ)) framePart = s.t(framePart.subtract(t));
+        if (piece.screws.length) {
+          const st = cache.get('screw')!;
+          framePart = s.t(framePart.subtract(s.t(Manifold.compose(piece.screws.map(([x, y]) => s.t(st.translate([x, y, 0])))))));
+        }
+        if (project.printer.engrave && piece.frameAnchor) {
+          const h = Math.max(3, Math.min(7, project.frame.width * 0.45));
+          const text = textOutline(K, s, piece.label, h, Math.max(0.8, h * 0.14), { mirror: true, angle: piece.frameAnchorAngle ?? 0 });
+          const [x, y] = piece.frameAnchor;
+          framePart = s.t(framePart.subtract(s.t(s.t(text.extrude(1.6)).translate([x, y, -1]))));
+        }
+        body = s.t(body.add(framePart));
+      }
       for (const t of cutoutTools(K, s, near, DEPTH)) body = s.t(body.subtract(t));
-      if (project.printer.engrave) {
+      if (project.printer.engrave && !band) {
         const mounts = cells.filter((c) => c.kind === 'mount').sort((a, b) => b.y - a.y || a.x - b.x);
         const edge = bottomEdge(piece.polys);
         if (mounts.length) {

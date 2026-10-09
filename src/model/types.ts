@@ -16,8 +16,12 @@ export interface WallSettings {
 
 export type FrameJoint = 'none' | 'lap';
 
+export type FrameMode = 'separate' | 'integrated';
+
 export interface FrameSettings {
   width: number; // 0 = no frame
+  /** separate: printed as its own parts; integrated: each edge panel carries its share of the frame. */
+  mode: FrameMode;
   /** Frame style id from the style registry (geometry/frames/styles.ts). */
   style: string;
   /** Parameters of the selected style. Kept per style so switching back restores them. */

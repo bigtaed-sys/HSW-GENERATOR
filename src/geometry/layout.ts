@@ -47,6 +47,8 @@ export interface LayoutInternal {
   lipInner: CrossSection;
   lip: number;
   frameParts: Map<string, FrameParts>;
+  /** Integrated frame: the part of the frame band each edge panel carries. */
+  frameBands: Map<string, CrossSection>;
 }
 
 /** A frame piece: full-height core plus half-height lap ends lying on top of (high) or under (low) its neighbours. */
@@ -127,7 +129,8 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   const hasFrame = !honeycomb && frame.width > 0.01;
   const inner = hasFrame ? s.t(outer.offset(-frame.width, 'Round', 2, 96)) : outer;
   // The lip is the part of the frame front that reaches over the panel edges.
-  const lip = hasFrame && frame.proud >= 1 ? Math.max(0, frame.lip) : 0;
+  const integrated = hasFrame && frame.mode === 'integrated';
+  const lip = hasFrame && !integrated && frame.proud >= 1 ? Math.max(0, frame.lip) : 0;
   const lipInner = lip > 0 ? s.t(inner.offset(-lip, 'Round', 2, 96)) : inner;
   if (hasFrame && inner.isEmpty()) warnings.push('warnFrameTooWide');
 
@@ -201,8 +204,16 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       const band = s.t(s.t(CS.square([b.max[0] - b.min[0] + 2, 1.5 * PITCH_Y])).translate([b.min[0] - 1, y0]));
       if (s.t(band.intersect(gridRegion)).area() > 1) usedRows.push(r);
     }
-    const colGroups = splitEven(usedCols, kMax);
-    const rowGroups = splitEven(usedRows, nMax);
+    // An integrated frame makes the edge panels wider by the frame width.
+    const fwI = integrated ? frame.width : 0;
+    const kOf = (w: number) => Math.max(1, Math.floor((w / TILE_R - 0.5) / 1.5));
+    const nOf = (h: number) => Math.max(1, Math.floor((h - PITCH_Y / 2) / PITCH_Y));
+    const colGroups = fwI
+      ? splitWithEdges(usedCols, kOf(usableW - 2 * fwI), kOf(usableW - fwI), kMax)
+      : splitEven(usedCols, kMax);
+    const rowGroups = fwI
+      ? splitWithEdges(usedRows, nOf(usableH - 2 * fwI), nOf(usableH - fwI), nMax)
+      : splitEven(usedRows, nMax);
 
     const panelOf = new Map<string, string>();
     rowGroups.forEach((rows, gj) => {
@@ -282,7 +293,31 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   // ---- Frame pieces --------------------------------------------------------
   const frontZ = DEPTH + (hasFrame ? frame.proud : 0);
   const frameParts = new Map<string, FrameParts>();
-  if (hasFrame && !inner.isEmpty()) {
+  const frameBands = new Map<string, CrossSection>();
+  if (integrated && !inner.isEmpty()) {
+    const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
+    const panels = pieces.filter((p) => p.kind === 'panel');
+    const owned = integrateFrame(K, s, outer, inner, band, frame.width, panels);
+    const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
+    const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
+    for (const p of panels) {
+      const part = owned.get(p.id);
+      if (!part || part.isEmpty()) continue;
+      frameBands.set(p.id, part);
+      const footprint = s.t(regions.get(p.id)!.add(part));
+      regions.set(p.id, footprint);
+      const bandPolys = polysOf(part);
+      p.polys = polysOf(footprint);
+      p.bbox = bboxOf(p.polys);
+      p.framePolys = bandPolys;
+      if (screwOk) p.screws = frameScrews(mid, bandPolys, cuts, mount.headDiameter);
+      const a = frameAnchor(mid, bandPolys);
+      p.frameAnchor = a.p;
+      p.frameAnchorAngle = a.angle;
+      p.volume += (part.area() * frontZ) / 1000;
+    }
+  }
+  if (hasFrame && !integrated && !inner.isEmpty()) {
     const band = s.t(s.t(outer.subtract(lipInner)).subtract(allCuts));
     const lapLen = frame.joint === 'lap' ? Math.max(10, frame.jointLength) : 0;
     const bandW = frame.width + lip;
@@ -384,7 +419,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts };
+  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -401,6 +436,37 @@ function centroid(polys: Vec2[][]): Vec2 {
       cy += (y0 + y1) * f;
     }
   return a ? [cx / (3 * a), cy / (3 * a)] : [0, 0];
+}
+
+/**
+ * Like splitEven, but the first and last group may hold fewer items (they also
+ * carry part of an integrated frame). `single` is the limit when one group takes all.
+ */
+export function splitWithEdges<T>(items: T[], single: number, edge: number, middle: number): T[][] {
+  const n = items.length;
+  if (!n) return [];
+  if (n <= single) return [items];
+  let g = 2;
+  while (2 * edge + (g - 2) * middle < n && g < 1000) g++;
+  const sizes = Array.from({ length: g }, (_, i) => (i === 0 || i === g - 1 ? edge : middle));
+  // Trim the largest groups one at a time, middle-out, until the sizes add up.
+  const order = Array.from({ length: g }, (_, i) => i).sort(
+    (a, b) => Math.abs(a - (g - 1) / 2) - Math.abs(b - (g - 1) / 2),
+  );
+  let excess = sizes.reduce((a, b) => a + b, 0) - n;
+  while (excess > 0) {
+    const max = Math.max(...sizes);
+    const i = order.find((j) => sizes[j] === max)!;
+    sizes[i]--;
+    excess--;
+  }
+  const out: T[][] = [];
+  let k = 0;
+  for (const sz of sizes) {
+    out.push(items.slice(k, k + sz));
+    k += sz;
+  }
+  return out;
 }
 
 /** Split an ordered list into the fewest groups of at most `max`, as evenly as possible. */
@@ -733,6 +799,85 @@ function splitFrame(
     if (res.fits.every(Boolean)) return { pieces: res.pieces, cuts: res.cuts };
   }
   return null;
+}
+
+/**
+ * Integrated frame: splits the frame band between the edge panels. Cuts run square
+ * to the outline from the points where seams between panels meet the inner edge.
+ */
+function integrateFrame(
+  K: Kernel,
+  s: Scope,
+  outer: CrossSection,
+  inner: CrossSection,
+  band: CrossSection,
+  width: number,
+  panels: LayoutPiece[],
+): Map<string, CrossSection> {
+  const out = new Map<string, CrossSection>();
+  const innerPolys = polysOf(inner);
+  if (!innerPolys.length || !panels.length) return out;
+  const main = innerPolys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a));
+  const ri = ring(main);
+  // Which panel owns the inner edge, sampled just inside it.
+  const step = 1;
+  const owners: (string | null)[] = [];
+  const pts: Vec2[] = [];
+  for (let x = 0; x < ri.length; x += step) {
+    const { p, t } = pointAt(ri, x);
+    const q: Vec2 = [p[0] - t[1] * 0.8, p[1] + t[0] * 0.8];
+    pts.push(p);
+    owners.push(panels.find((pc) => pointInPolys(q[0], q[1], pc.polys))?.id ?? null);
+  }
+  // Fill gaps (cutouts at the edge) from the previous owner.
+  let last = owners.find((o) => o) ?? null;
+  for (let i = 0; i < owners.length; i++) owners[i] = owners[i] ?? last, (last = owners[i]);
+  const ids = new Set(owners.filter(Boolean));
+  if (ids.size <= 1) {
+    if (last) out.set(last, band);
+    return out;
+  }
+  const cutter = bandCutter(K, s, outer, band, width);
+  const ro = cutter.rg;
+  // Seam exits on the inner edge, carried straight out to the outer edge.
+  const nearestOnOuter = (p: Vec2) => {
+    let best = 0,
+      bd = Infinity;
+    for (let x = 0; x < ro.length; x += 0.5) {
+      const q = pointAt(ro, x).p;
+      const d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = x;
+      }
+    }
+    return best;
+  };
+  const cuts: FrameCut[] = [];
+  for (let i = 0; i < owners.length; i++) {
+    const prev = owners[(i - 1 + owners.length) % owners.length];
+    if (owners[i] === prev) continue;
+    const at = nearestOnOuter(pts[i]);
+    cuts.push({ ...pointAt(ro, at), s: at });
+  }
+  const pieces = cutter.cut(cuts);
+  for (const piece of pieces) {
+    if (piece.isEmpty()) continue;
+    // Owner: the panel along the inner edge closest to the piece.
+    const [cx, cy] = centroid(polysOf(piece));
+    let bi = 0,
+      bd = Infinity;
+    pts.forEach((p, i) => {
+      const d = (p[0] - cx) ** 2 + (p[1] - cy) ** 2;
+      if (d < bd) {
+        bd = d;
+        bi = i;
+      }
+    });
+    const id = owners[bi]!;
+    out.set(id, out.has(id) ? s.t(out.get(id)!.add(piece)) : piece);
+  }
+  return out;
 }
 
 /** Contiguous stretches of the frame mid-line that lie inside a piece. */

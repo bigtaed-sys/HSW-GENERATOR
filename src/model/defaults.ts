@@ -42,6 +42,7 @@ export function defaultProject(): Project {
     wall: { shape: 'rect', width: 900, height: 600, cornerRadius: 24 },
     frame: {
       width: 18,
+      mode: 'separate',
       style: 'classic',
       styleParams: {},
       proud: 2,

@@ -362,6 +362,15 @@ export function Canvas2D() {
           {panelPieces.map((p) => (
             <path key={p.id} d={pathOf(p.polys)} fill={colors.panel} fillRule="evenodd" />
           ))}
+          {/* Integrated frame parts of edge panels */}
+          {panelPieces
+            .filter((p) => p.framePolys)
+            .map((p) => (
+              <g key={`fb-${p.id}`}>
+                <path d={pathOf(p.framePolys!)} fill={mix(colors.panel, '#ffffff', panelDark ? 0.1 : 0.06)} fillRule="evenodd" />
+                <path d={pathOf(p.framePolys!)} fill="url(#frameSheen)" fillRule="evenodd" />
+              </g>
+            ))}
           {/* Frame */}
           {framePieces.map((p) => (
             <g key={p.id}>

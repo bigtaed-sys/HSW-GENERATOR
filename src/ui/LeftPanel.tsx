@@ -154,6 +154,19 @@ function FrameTab() {
       <Section title={t('tabFrame')}>
         <Slider label={t('frameWidth')} value={frame.width} min={0} max={80} onChange={bind((p, v) => (p.frame.width = v))} />
         {!has && <p className="hint">{t('frameNone')}</p>}
+        {has && (
+          <>
+            <Segmented
+              value={frame.mode}
+              onChange={(v) => update((p) => void (p.frame.mode = v))}
+              options={[
+                { value: 'separate', label: t('frameSeparate') },
+                { value: 'integrated', label: t('frameIntegrated') },
+              ]}
+            />
+            <p className="hint">{frame.mode === 'integrated' ? t('frameIntegratedHint') : t('frameSeparateHint')}</p>
+          </>
+        )}
       </Section>
       {has && (
         <>
@@ -180,15 +193,15 @@ function FrameTab() {
           </Section>
           <Section title={t('frameFit')}>
             <Slider label={t('proud')} value={frame.proud} min={0} max={12} step={0.5} onChange={bind((p, v) => (p.frame.proud = v))} />
-            <Slider label={t('lip')} value={frame.lip} min={0} max={10} step={0.5} onChange={bind((p, v) => (p.frame.lip = v))} />
-            {frame.lip > 0 && frame.proud < 1 ? (
+            {frame.mode === 'separate' && <Slider label={t('lip')} value={frame.lip} min={0} max={10} step={0.5} onChange={bind((p, v) => (p.frame.lip = v))} />}
+            {frame.mode === 'integrated' ? null : frame.lip > 0 && frame.proud < 1 ? (
               <p className="hint warn" style={{ marginTop: -4, marginBottom: 12 }}>{t('lipNeedsProud')}</p>
             ) : (
               <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>{t('lipHint')}</p>
             )}
             <Slider label={t('innerChamfer')} value={frame.innerChamfer} min={0} max={4} step={0.2} onChange={bind((p, v) => (p.frame.innerChamfer = v))} />
           </Section>
-          <Section title={t('frameJoints')}>
+          {frame.mode === 'separate' && <Section title={t('frameJoints')}>
             <Segmented
               value={frame.joint}
               onChange={(v) => update((p) => void (p.frame.joint = v))}
@@ -203,10 +216,17 @@ function FrameTab() {
             )}
             <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
             <p className="hint">{t('frameJointHint')}</p>
-          </Section>
-          <Section title={t('frameColor')}>
-            <Swatches value={color} onChange={(v) => update((p) => void (p.colors.frame = v))} />
-          </Section>
+          </Section>}
+          {frame.mode === 'integrated' && (
+            <Section>
+              <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
+            </Section>
+          )}
+          {frame.mode === 'separate' && (
+            <Section title={t('frameColor')}>
+              <Swatches value={color} onChange={(v) => update((p) => void (p.colors.frame = v))} />
+            </Section>
+          )}
         </>
       )}
     </>

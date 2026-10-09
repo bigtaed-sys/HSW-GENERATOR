@@ -7,7 +7,7 @@ import { ACCESSORIES, defaultParams } from '../accessories/defs';
 import { defaultProject } from '../../model/defaults';
 import { FRAME_STYLES } from '../frames/styles';
 import { makeTestKit } from '../../model/testKit';
-import { Scope, type Kernel } from '../kernel';
+import { Scope, signedArea, type Kernel } from '../kernel';
 
 let K: Kernel;
 beforeAll(async () => {
@@ -107,6 +107,36 @@ describe('build', () => {
     console.log('engraved volume mm3: panel', (p0 - p1).toFixed(1), 'frame', (f0 - f1).toFixed(1));
     expect(p0 - p1).toBeGreaterThan(2);
     expect(f0 - f1).toBeGreaterThan(5);
+  });
+
+  it('builds an integrated frame into the edge panels', () => {
+    for (const shape of ['rect', 'ellipse'] as const) {
+      const p = defaultProject();
+      p.wall.shape = shape;
+      p.frame.mode = 'integrated';
+      p.frame.width = 22;
+      const L = computeLayout(K, p);
+      const { pieces, warnings, outer } = L.layout;
+      expect(warnings).toEqual([]);
+      expect(pieces.every((x) => x.kind === 'panel')).toBe(true);
+      const area = (polys: [number, number][][]) => polys.reduce((a, q) => a + signedArea(q), 0);
+      const total = pieces.reduce((a, pc) => a + area(pc.polys), 0);
+      expect(Math.abs(total - area(outer))).toBeLessThan(area(outer) * 0.001);
+      for (const pc of pieces) expect(pc.printAngle).not.toBeNull();
+      const s = new Scope();
+      const cache = prepareTools(K, L, p, s);
+      const edge = pieces.filter((pc) => pc.framePolys);
+      expect(edge.length).toBeGreaterThan(4);
+      for (const pc of edge) {
+        const m = buildPiece(K, L, pc.id, cache)!;
+        expect(m.decompose().length).toBe(1);
+        expect(m.boundingBox().max[2]).toBeCloseTo(L.frontZ, 1);
+        m.delete();
+      }
+      console.log(shape, 'integrated:', pieces.length, 'panels,', edge.length, 'with frame;', pieces.map((x) => x.printSize.map(Math.round).join('x')).join(' '));
+      s.free();
+      L.scope.free();
+    }
   });
 
   it('builds all accessories', () => {
