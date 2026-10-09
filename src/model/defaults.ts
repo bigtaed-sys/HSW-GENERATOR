@@ -50,6 +50,7 @@ export function defaultProject(): Project {
       innerChamfer: 0.6,
       innerProfile: 'chamfer',
       screws: true,
+      screwSpacing: 250,
       joint: 'lap',
       jointLength: 40,
       led: { mode: 'none', width: 12, depth: 3, wire: true, color: '#ffc27a' },
