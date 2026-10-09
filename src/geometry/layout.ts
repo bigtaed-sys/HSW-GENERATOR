@@ -538,36 +538,20 @@ function pointAt(rg: Ring, s: number): { p: Vec2; t: Vec2 } {
   };
 }
 
-function splitFrame(
-  K: Kernel,
-  s: Scope,
-  outer: CrossSection,
-  band: CrossSection,
-  width: number,
-  bedW: number,
-  bedH: number,
-  lapLen: number,
-): FrameSplit | null {
+/**
+ * Cuts a frame band (between a convex outline and an inner offset) into pieces at
+ * the given positions along the outline, with cuts square to the outline. Falls
+ * back to radial cuts when that leaves stray bits.
+ */
+export function bandCutter(K: Kernel, s: Scope, outer: CrossSection, band: CrossSection, width: number) {
   const CS = K.CrossSection;
-  const bandPolys = polysOf(band);
-  if (fitOnBed(bandPolys, bedW, bedH).angle !== null) return { pieces: [band], cuts: [] };
-
   const outerPolys = polysOf(outer);
   const main = outerPolys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a));
   const rg = ring(main);
   const ob = outer.bounds();
   const C: Vec2 = [(ob.min[0] + ob.max[0]) / 2, (ob.min[1] + ob.max[1]) / 2];
   const BIG = 1e5;
-  const bandArea = band.area();
 
-  const distToCurved = (x: number) => {
-    let d = Infinity;
-    for (const c of rg.curved) {
-      const dd = Math.abs(x - c);
-      d = Math.min(d, dd, rg.length - dd);
-    }
-    return d;
-  };
 
   const halfPlane = (p: Vec2, t: Vec2, ahead: boolean) => {
     const n: Vec2 = [-t[1], t[0]];
@@ -613,12 +597,44 @@ function splitFrame(
     }
     return out;
   };
-  const tryCuts = (cuts: Cut[]) => {
+  const bandArea = band.area();
+  const cut = (cuts: Cut[]) => {
     cuts.sort((a, b) => a.s - b.s);
     let pieces = build(cuts, false);
     const total = pieces.reduce((a, p) => a + p.area(), 0);
     const broken = pieces.some((p) => p.isEmpty() || p.decompose().filter((d) => (s.t(d), d.area() > 1)).length > 1);
     if (Math.abs(total - bandArea) > bandArea * 0.002 || broken) pieces = build(cuts, true);
+    return pieces;
+  };
+  return { rg, cut };
+}
+
+function splitFrame(
+  K: Kernel,
+  s: Scope,
+  outer: CrossSection,
+  band: CrossSection,
+  width: number,
+  bedW: number,
+  bedH: number,
+  lapLen: number,
+): FrameSplit | null {
+  const CS = K.CrossSection;
+  const bandPolys = polysOf(band);
+  if (fitOnBed(bandPolys, bedW, bedH).angle !== null) return { pieces: [band], cuts: [] };
+
+  const cutter = bandCutter(K, s, outer, band, width);
+  const rg = cutter.rg;
+  const distToCurved = (x: number) => {
+    let d = Infinity;
+    for (const c of rg.curved) {
+      const dd = Math.abs(x - c);
+      d = Math.min(d, dd, rg.length - dd);
+    }
+    return d;
+  };
+  const tryCuts = (cuts: Cut[]) => {
+    const pieces = cutter.cut(cuts);
     const fits = pieces.map((p, j) => {
       let fp = p;
       if (lapLen > 0) {
