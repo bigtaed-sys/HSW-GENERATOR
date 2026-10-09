@@ -128,12 +128,25 @@ export const FRAME_STYLES: FrameStyleDef[] = [
       param('skin', 'Дно канавки', 'Groove floor', 0.2, 1.6, 0.6, 0.04),
       param('plate', 'Лицевая пластина', 'Front plate', 1.5, 8, 3, 0.1),
       param('wall', 'Стенки полости', 'Hollow walls', 1.2, 8, 2.5, 0.1),
+      {
+        key: 'side',
+        label: { ru: 'Лента', en: 'Strip' },
+        min: 0,
+        max: 1,
+        step: 1,
+        def: 0,
+        unit: '',
+        options: [
+          { value: 0, label: { ru: 'У внешней стенки', en: 'On the outer wall' } },
+          { value: 1, label: { ru: 'У внутренней стенки', en: 'On the inner wall' } },
+        ],
+      },
       param('patch', 'Накладка на стык', 'Seam patch', 0.2, 2, 0.6, 0.1),
       param('patchWidth', 'Ширина накладки', 'Patch width', 8, 30, 16, 1),
     ],
     note: {
-      ru: 'Сетка стены продолжается на рамке канавками с тонким дном. Рамка полая сзади: лента внутри подсвечивает узор через обычный, не прозрачный пластик, светлый светится лучше. Дно делайте в 2–3 слоя. Полость сквозная по всему периметру, вдоль внешней стенки остаётся свободная дорожка 14 мм под ленту, саморезы стоят дальше от края. Части режутся по канавкам, так что узор идёт через стык; сзади шов закрывает тонкая накладка (J1, J2…), её вклеивают в полость под пластину. Отдельные части рамки экспортируются лицом вниз; рамка заодно с панелями печатается спиной вниз, пластина над полостью идёт мостом.',
-      en: 'The wall honeycomb continues over the frame as grooves with a thin floor. The frame is hollow at the back: an LED strip inside makes the pattern glow through ordinary (not transparent) plastic; light colours work best. Make the floor 2–3 layers thick. The hollow runs all the way round, with a free 14 mm lane along the outer wall for the strip; screws sit further in. Parts are cut along the grooves, so the pattern runs across the seams; a thin patch (J1, J2…) is glued into the hollow behind each seam. Separate frame parts export face down; an integrated frame prints back down, with the plate bridged over the hollow.',
+      ru: 'Сетка стены продолжается на рамке канавками с тонким дном. Рамка полая сзади: лента внутри подсвечивает узор через обычный, не прозрачный пластик, светлый светится лучше. Дно делайте в 2–3 слоя. Полость сквозная по всему периметру. Лента клеится на внешнюю стенку и светит внутрь или на внутреннюю (у сот) и светит наружу; вдоль выбранной стенки остаётся свободная дорожка 14 мм, саморезы стоят в стороне. Части режутся по канавкам, так что узор идёт через стык; сзади шов закрывает тонкая накладка (J1, J2…), её вклеивают в полость под пластину. Отдельные части рамки экспортируются лицом вниз; рамка заодно с панелями печатается спиной вниз, пластина над полостью идёт мостом.',
+      en: 'The wall honeycomb continues over the frame as grooves with a thin floor. The frame is hollow at the back: an LED strip inside makes the pattern glow through ordinary (not transparent) plastic; light colours work best. Make the floor 2–3 layers thick. The hollow runs all the way round. The strip goes on the outer wall shining inwards, or on the inner wall (by the cells) shining outwards; a free 14 mm lane is kept along that wall and screws sit clear of it. Parts are cut along the grooves, so the pattern runs across the seams; a thin patch (J1, J2…) is glued into the hollow behind each seam. Separate frame parts export face down; an integrated frame prints back down, with the plate bridged over the hollow.',
     },
   },
 ];

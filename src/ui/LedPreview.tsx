@@ -61,8 +61,8 @@ function Strip({ led, color }: { led: LayoutLed; color: THREE.Color }) {
     for (let i = 0; i < count; i++) {
       const [x, y, nx, ny] = led.leds.subarray(i * 4, i * 4 + 4);
       if (led.kind === 'inside') {
-        // Standing strip: LEDs face into the hollow (the path normal points outwards).
-        o.position.set(x - nx * 1.1, y - ny * 1.1, (led.z0 + led.z1) / 2);
+        // Standing strip: LEDs on the side facing the way they shine.
+        o.position.set(x + nx * 1.1, y + ny * 1.1, (led.z0 + led.z1) / 2);
         o.rotation.set(0, 0, Math.atan2(ny, nx));
         o.scale.set(1.4, 5, Math.min(5, led.z1 - led.z0));
       } else {
