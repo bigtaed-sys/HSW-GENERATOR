@@ -609,38 +609,71 @@ function splitFrame(
     return { pieces, fits, cuts };
   };
 
-  // Strategy 1: symmetric cuts on the straight edges of the outline.
+  // Strategy 1: symmetric cuts along the outline's straight edges and, when a
+  // corner part is still too big, in the middle of the corner arc.
   const n = rg.pts.length;
-  const runs: { s0: number; len: number }[] = [];
+  const L = rg.length;
+  type Run = { s0: number; len: number; curved: boolean };
+  const runs: Run[] = [];
+  const straightMin = Math.max(40, 2 * width);
   for (let i = 0; i < n; i++) {
     const len = rg.cum[i + 1] - rg.cum[i];
-    if (len >= Math.max(40, 2 * width)) runs.push({ s0: rg.cum[i], len });
+    const last = runs[runs.length - 1];
+    if (len >= straightMin) runs.push({ s0: rg.cum[i], len, curved: false });
+    else if (last?.curved && Math.abs(last.s0 + last.len - rg.cum[i]) < 1e-6) last.len += len;
+    else runs.push({ s0: rg.cum[i], len, curved: true });
   }
-  if (runs.length >= 2) {
-    const k = runs.map(() => 1);
+  // A curved stretch can wrap around the start of the ring.
+  if (runs.length > 1 && runs[0].curved && runs[runs.length - 1].curved && Math.abs(runs[runs.length - 1].s0 + runs[runs.length - 1].len - L) < 1e-6) {
+    const tail = runs.pop()!;
+    runs[0] = { s0: tail.s0, len: tail.len + runs[0].len, curved: true };
+  }
+  const usable = runs.filter((r) => !r.curved || r.len > 5);
+  if (usable.some((r) => !r.curved)) {
+    // Parts must stay comfortably longer than a lap joint.
+    const minSeg = lapLen > 0 ? lapLen + 30 : 40;
+    const k: number[] = usable.map((r) => (r.curved ? 0 : 1));
+    const inRun = (r: Run, x: number) => ((((x - r.s0) % L) + L) % L) <= r.len;
+    const overlaps = (r: Run, from: number, to: number) => {
+      const span = (((to - from) % L) + L) % L || L;
+      for (let t = 0; t <= 1; t += 1 / 32) if (inRun(r, from + span * t)) return true;
+      return false;
+    };
     for (let iter = 0; iter < 200; iter++) {
-      const cuts: (Cut & { run: number })[] = [];
-      runs.forEach((run, i) => {
+      const cuts: Cut[] = [];
+      usable.forEach((run, i) => {
         for (let j = 0; j < k[i]; j++) {
-          const at = run.s0 + ((j + 0.5) * run.len) / k[i];
-          cuts.push({ ...pointAt(rg, at), s: at, run: i });
+          const at = (run.s0 + ((j + 0.5) * run.len) / k[i]) % L;
+          cuts.push({ ...pointAt(rg, at), s: at });
         }
       });
-      if (cuts.length < 3) {
-        k[runs.reduce((bi, r, i) => (r.len / k[i] > runs[bi].len / k[bi] ? i : bi), 0)]++;
-        continue;
+      if (cuts.length >= 3) {
+        const res = tryCuts(cuts);
+        if (res.fits.every(Boolean)) return { pieces: res.pieces, cuts: res.cuts };
+        // Add a cut to the longest stretch inside each part that does not fit.
+        const grow = new Set<number>();
+        res.fits.forEach((ok, j) => {
+          if (ok) return;
+          const from = res.cuts[j].s,
+            to = res.cuts[(j + 1) % res.cuts.length].s;
+          let best = -1,
+            bestLen = 0;
+          usable.forEach((r, i) => {
+            const seg = r.len / (k[i] + 1);
+            if (seg >= minSeg && overlaps(r, from, to) && seg > bestLen + (r.curved ? 1 : 0)) {
+              best = i;
+              bestLen = seg;
+            }
+          });
+          if (best >= 0) grow.add(best);
+        });
+        if (!grow.size) break;
+        for (const i of grow) k[i]++;
+      } else {
+        const i = usable.reduce((bi, r, j) => (r.len / (k[j] + 1) > usable[bi].len / (k[bi] + 1) ? j : bi), 0);
+        k[i]++;
       }
-      const res = tryCuts(cuts);
-      if (res.fits.every(Boolean)) return { pieces: res.pieces, cuts: res.cuts };
-      const grow = new Set<number>();
-      res.fits.forEach((ok, j) => {
-        if (ok) return;
-        const a = cuts[j] as Cut & { run: number },
-          b2 = cuts[(j + 1) % cuts.length] as Cut & { run: number };
-        grow.add(runs[a.run].len / k[a.run] >= runs[b2.run].len / k[b2.run] ? a.run : b2.run);
-      });
-      for (const i of grow) k[i]++;
-      if (k.reduce((a, b) => a + b, 0) > 80) break;
+      if (k.reduce((x, y) => x + y, 0) > 80) break;
     }
   }
 
