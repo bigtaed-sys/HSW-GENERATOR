@@ -54,6 +54,8 @@ export interface LayoutConnector {
 export interface Layout {
   outer: Vec2[][];
   inner: Vec2[][];
+  /** Pockets of the decorative frame pattern. */
+  pattern?: Vec2[][];
   cells: LayoutCell[];
   pieces: LayoutPiece[];
   connectors: LayoutConnector[];

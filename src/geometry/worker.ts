@@ -119,8 +119,8 @@ function accessoryShape(accType: string, params: Record<string, number>): Access
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-/** Moves a mesh so it lies on the bed: rotated by `angle`, centred, z from 0. */
-function placeForPrint(mesh: MeshData, angle: number): MeshData {
+/** Moves a mesh so it lies on the bed: rotated by `angle`, centred, z from 0; `faceDown` turns it over. */
+function placeForPrint(mesh: MeshData, angle: number, faceDown = false): MeshData {
   const r = (angle * Math.PI) / 180;
   const c = Math.cos(r),
     sn = Math.sin(r);
@@ -133,9 +133,10 @@ function placeForPrint(mesh: MeshData, angle: number): MeshData {
   for (let i = 0; i < p.length; i += 3) {
     const x = mesh.positions[i],
       y = mesh.positions[i + 1];
+    const f = faceDown ? -1 : 1;
     p[i] = x * c - y * sn;
-    p[i + 1] = x * sn + y * c;
-    p[i + 2] = mesh.positions[i + 2];
+    p[i + 1] = (x * sn + y * c) * f;
+    p[i + 2] = mesh.positions[i + 2] * f;
     x0 = Math.min(x0, p[i]);
     x1 = Math.max(x1, p[i]);
     y0 = Math.min(y0, p[i + 1]);
@@ -203,7 +204,7 @@ async function handle(msg: WorkerRequest) {
       let done = 0;
       for (const piece of pieces) {
         const mesh = pieceMesh(project, piece.id);
-        if (mesh) items.push({ name: `${names[piece.kind] ?? piece.kind}-${piece.label}`, mesh: placeForPrint(mesh, piece.printAngle ?? 0) });
+        if (mesh) items.push({ name: `${names[piece.kind] ?? piece.kind}-${piece.label}`, mesh: placeForPrint(mesh, piece.printAngle ?? 0, piece.kind === 'frame' && project.frame.pattern.mode === 'lit') });
         ctx.postMessage({ type: 'progress', id: msg.id, done: ++done, total } satisfies WorkerResponse);
         await tick();
       }
