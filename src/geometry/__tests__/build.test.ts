@@ -90,6 +90,10 @@ describe('build', () => {
         vol += m.volume();
         m.delete();
       }
+      if (preset.id === 'hex-lit') {
+        // Integrated: seams between edge panels get patches too.
+        expect(L.plates.length).toBeGreaterThan(1);
+      }
       if (preset.id === 'lit-separate') {
         // Cut along the grooves, no laps: one patch per seam.
         const frames = L.layout.pieces.filter((x) => x.kind === 'frame').length;

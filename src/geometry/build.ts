@@ -197,7 +197,6 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
         let framePart = s.t(s.t(cache.get('outer')!.intersect(clip)).subtract(cache.get('inner')!));
         for (const t of cutoutTools(K, s, near, L.frontZ)) framePart = s.t(framePart.subtract(t));
         if (cache.has('led')) framePart = s.t(framePart.subtract(cache.get('led')!));
-        if (cache.has('pattern')) framePart = s.t(framePart.subtract(cache.get('pattern')!));
         if (piece.screws.length) {
           const st = cache.get('screw')!;
           framePart = s.t(framePart.subtract(s.t(Manifold.compose(piece.screws.map(([x, y]) => s.t(st.translate([x, y, 0])))))));
@@ -209,6 +208,8 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
           framePart = s.t(framePart.subtract(s.t(s.t(text.extrude(1.6)).translate([x, y, -1]))));
         }
         body = s.t(body.add(framePart));
+        // After joining: the cell part fuses to the frame with a hair-thin rim that would close the hollow at the seams.
+        if (cache.has('pattern')) body = s.t(body.subtract(cache.get('pattern')!));
       }
       for (const t of cutoutTools(K, s, near, DEPTH)) body = s.t(body.subtract(t));
       if (project.printer.engrave && !band) {

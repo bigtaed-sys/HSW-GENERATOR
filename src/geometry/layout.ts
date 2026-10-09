@@ -269,7 +269,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       });
       if (!integrated) break;
       const trialBand = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
-      const owned = integrateFrame(K, s, outer, inner, trialBand, frame.width, pieces);
+      const owned = integrateFrame(K, s, outer, inner, trialBand, frame.width, pieces, frame.style === 'lit' ? grid : undefined);
       const fits = pieces.every((pc) => {
         const part = owned.get(pc.id);
         const fp = part ? s.t(regions.get(pc.id)!.add(part)) : regions.get(pc.id)!;
@@ -302,11 +302,15 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   }
 
   const frontZ = DEPTH + (hasFrame ? frame.proud : 0);
+  /** Backlit cells: where the frame is cut, for the patches behind the seams. */
+  const seams: { c: FrameCut; width: number }[] = [];
   const frameBands = new Map<string, CrossSection>();
   if (integrated && !inner.isEmpty()) {
     const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
     const panels = pieces.filter((p) => p.kind === 'panel');
-    const owned = integrateFrame(K, s, outer, inner, band, frame.width, panels);
+    const cutsOut: FrameCut[] = [];
+    const owned = integrateFrame(K, s, outer, inner, band, frame.width, panels, frame.style === 'lit' ? grid : undefined, cutsOut);
+    if (frame.style === 'lit') seams.push(...cutsOut.map((c) => ({ c, width: frame.width })));
     const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
     const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
     for (const p of panels) {
@@ -372,7 +376,6 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   // ---- Frame pieces --------------------------------------------------------
   const frameParts = new Map<string, FrameParts>();
-  const seams: { c: FrameCut; width: number }[] = [];
   if (hasFrame && !integrated && !inner.isEmpty()) {
     const band = s.t(s.t(outer.subtract(lipInner)).subtract(allCuts));
     // Backlit cells: parts meet along the grooves, with a patch behind each seam instead of laps.
@@ -461,16 +464,25 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   // ---- Decorative pattern on the frame front -----------------------------
   if (hasFrame && frame.style === 'lit') {
-    // Backlit cells: move each frame screw to the middle of the nearest tile of the pattern.
+    // Backlit cells: move each frame screw to the middle of a nearby tile of the pattern,
+    // clear of a lane along the outer wall where the LED strip runs.
+    const boss = mount.headDiameter / 2 + 1.6;
+    const lane = polysOf(s.t(outer.offset(-(frameStyleParams(frame).wall + LED_LANE + boss), 'Round', 2, 96)));
     for (const p of pieces) {
       const own = p.kind === 'frame' ? p.polys : p.framePolys;
       if (!own) continue;
       p.screws = p.screws.map(([x, y]) => {
-        const { c, r } = cellAt(x, y, grid);
-        const q = cellCenter(c, r, grid);
-        const room = mount.headDiameter / 2 + 2;
-        const ok = Math.hypot(q[0] - x, q[1] - y) < PITCH_Y * 0.7 && [[0, 0], [room, 0], [-room, 0], [0, room], [0, -room]].every(([dx, dy]) => pointInPolys(q[0] + dx, q[1] + dy, own));
-        return ok ? q : [x, y];
+        const at = cellAt(x, y, grid);
+        let best: Vec2 | null = null;
+        for (let dc = -2; dc <= 2; dc++)
+          for (let dr = -2; dr <= 2; dr++) {
+            const q = cellCenter(at.c + dc, at.r + dr, grid);
+            const ok =
+              pointInPolys(q[0], q[1], lane) &&
+              [[0, 0], [boss, 0], [-boss, 0], [0, boss], [0, -boss]].every(([dx, dy]) => pointInPolys(q[0] + dx, q[1] + dy, own));
+            if (ok && (!best || Math.hypot(q[0] - x, q[1] - y) < Math.hypot(best[0] - x, best[1] - y))) best = q;
+          }
+        return best ?? [x, y];
       });
     }
   }
@@ -931,6 +943,8 @@ function integrateFrame(
   band: CrossSection,
   width: number,
   panels: LayoutPiece[],
+  grid?: GridSettings,
+  seamsOut?: FrameCut[],
 ): Map<string, CrossSection> {
   const out = new Map<string, CrossSection>();
   const innerPolys = polysOf(inner);
@@ -989,7 +1003,7 @@ function integrateFrame(
     if (last) out.set(last, band);
     return out;
   }
-  const cutter = bandCutter(K, s, outer, band, width);
+  const cutter = bandCutter(K, s, outer, band, width, grid);
   const ro = cutter.rg;
   // Seam exits on the inner edge, carried straight out to the outer edge.
   const nearestOnOuter = (p: Vec2) => {
@@ -1012,6 +1026,7 @@ function integrateFrame(
     const at = nearestOnOuter(pts[i]);
     cuts.push({ ...pointAt(ro, at), s: at });
   }
+  seamsOut?.push(...cuts);
   const pieces = cutter.cut(cuts);
   for (const piece of pieces) {
     if (piece.isEmpty()) continue;
@@ -1178,6 +1193,9 @@ function frameScrews(
   }
   return out;
 }
+
+/** Backlit cells: free width along the outer wall of the hollow for the LED strip. */
+const LED_LANE = 14;
 
 /** Frame relief: what is cut from the front, and for `lit` the hollow under it. */
 export interface FramePattern {
