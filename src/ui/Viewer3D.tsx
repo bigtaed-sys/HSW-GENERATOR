@@ -14,6 +14,7 @@ import { ensureShape, shapeKey, useGeo } from '../model/geo';
 import { uid, useStore } from '../model/store';
 import { preparedModel } from './customModel';
 import { LedPreview } from './LedPreview';
+import { Bloom, EffectComposer } from '@react-three/postprocessing';
 
 const geomCache = new WeakMap<MeshData, THREE.BufferGeometry>();
 
@@ -81,23 +82,14 @@ function Scene() {
   const ledOn = useStore((s) => s.ledSim) && !!layout?.led;
   const { wall: wallDay } = useThemeBg();
   // Lights off for the LED preview: a dim room so the strip shows.
-  const dim = ledOn ? 0.12 : 1;
-  const wall = ledOn ? '#9a968f' : wallDay;
+  const dim = ledOn ? 0.3 : 1;
+  const wall = wallDay;
 
   const panelMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: project.colors.panel, roughness: 0.62, metalness: 0.02 }),
     [project.colors.panel],
   );
-  // Exploded with the lights off: see-through parts show where the strip runs.
-  const xray = ledOn && exploded;
-  useEffect(() => {
-    for (const m of [panelMat, frameMat]) {
-      m.transparent = xray;
-      m.opacity = xray ? 0.35 : 1;
-      m.depthWrite = !xray;
-      m.needsUpdate = true;
-    }
-  });
+
   const frameMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: project.colors.frame, roughness: 0.5, metalness: 0.02 }),
     [project.colors.frame],
@@ -129,6 +121,11 @@ function Scene() {
           lift={exploded ? (project.frame.mode === 'integrated' ? 15 : 30) : 0}
           size={Math.max(w, h)}
         />
+      )}
+      {ledOn && (
+        <EffectComposer multisampling={4}>
+          <Bloom mipmapBlur luminanceThreshold={1} luminanceSmoothing={0.2} intensity={1.4} radius={0.75} />
+        </EffectComposer>
       )}
       {/* Room wall */}
       <mesh position={[0, 0, -0.6]} receiveShadow>
