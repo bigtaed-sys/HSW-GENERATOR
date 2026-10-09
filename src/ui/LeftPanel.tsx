@@ -8,6 +8,7 @@ import { uid, useStore } from '../model/store';
 import type { WallShape } from '../model/types';
 import { OUTLINE_PRESETS, presetPoints, scalePoints } from '../model/outlines';
 import { FRAME_STYLES, frameStyle, frameStyleParams } from '../geometry/frames/styles';
+import { FRAME_PRESETS } from '../model/framePresets';
 import { NumberInput, ParamControl, Section, Segmented, Slider, Swatches, Toggle, useBind } from './controls';
 
 type Tab = 'wall' | 'frame' | 'grid' | 'cutouts' | 'print';
@@ -204,6 +205,15 @@ function FrameTab() {
     }, { transient });
   return (
     <>
+      <Section title={t('framePresets')}>
+        <div className="chips">
+          {FRAME_PRESETS.map((fp) => (
+            <button key={fp.id} className="chip" onClick={() => update((p) => fp.apply(p.frame))}>
+              {t(fp.name as Parameters<typeof t>[0])}
+            </button>
+          ))}
+        </div>
+      </Section>
       <Section title={t('tabFrame')}>
         <Slider label={t('frameWidth')} value={frame.width} min={0} max={80} onChange={bind((p, v) => (p.frame.width = v))} />
         {!has && <p className="hint">{t('frameNone')}</p>}
@@ -252,7 +262,55 @@ function FrameTab() {
             ) : (
               <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>{t('lipHint')}</p>
             )}
-            <Slider label={t('innerChamfer')} value={frame.innerChamfer} min={0} max={4} step={0.2} onChange={bind((p, v) => (p.frame.innerChamfer = v))} />
+            <Segmented
+              value={frame.innerProfile}
+              onChange={(v) => update((p) => void (p.frame.innerProfile = v))}
+              options={[
+                { value: 'chamfer', label: t('innerEdgeChamfer') },
+                { value: 'round', label: t('innerEdgeRound') },
+              ]}
+            />
+            <div style={{ height: 12 }} />
+            <Slider
+              label={frame.innerProfile === 'round' ? t('innerRadius') : t('innerChamfer')}
+              value={frame.innerChamfer}
+              min={0}
+              max={Math.max(1, Math.min(8, frame.proud + 2))}
+              step={0.2}
+              onChange={bind((p, v) => (p.frame.innerChamfer = v))}
+            />
+          </Section>
+          <Section title={t('patternTitle')}>
+            <Segmented
+              value={frame.pattern.mode}
+              onChange={(v) => update((p) => void (p.frame.pattern.mode = v))}
+              options={[
+                { value: 'none', label: t('patternNone') },
+                { value: 'hex', label: t('patternHex') },
+                { value: 'lit', label: t('patternLit') },
+              ]}
+            />
+            <p className="hint" style={{ marginBottom: 12 }}>
+              {t(frame.pattern.mode === 'hex' ? 'patternHexHint' : frame.pattern.mode === 'lit' ? 'patternLitHint' : 'patternNoneHint')}
+            </p>
+            {frame.pattern.mode === 'lit' && (
+              <>
+                <Slider label={t('patternGroove')} value={frame.pattern.rib} min={1} max={6} step={0.1} onChange={bind((p, v) => (p.frame.pattern.rib = v))} />
+                <Slider label={t('patternSkin')} value={frame.pattern.skin} min={0.2} max={1.6} step={0.04} onChange={bind((p, v) => (p.frame.pattern.skin = v))} />
+                <Slider label={t('patternPlate')} value={frame.pattern.plate} min={1.5} max={8} step={0.1} onChange={bind((p, v) => (p.frame.pattern.plate = v))} />
+                <Slider label={t('patternWall')} value={frame.pattern.margin} min={1.2} max={8} step={0.1} onChange={bind((p, v) => (p.frame.pattern.margin = v))} />
+                <p className="hint">{t(frame.mode === 'separate' ? 'patternLitPrintSeparate' : 'patternLitPrintIntegrated')}</p>
+              </>
+            )}
+            {frame.pattern.mode === 'hex' && (
+              <>
+                <Slider label={t('patternSize')} value={frame.pattern.size} min={4} max={24} step={0.5} onChange={bind((p, v) => (p.frame.pattern.size = v))} />
+                <Slider label={t('patternRib')} value={frame.pattern.rib} min={0.8} max={4} step={0.1} onChange={bind((p, v) => (p.frame.pattern.rib = v))} />
+                <Slider label={t('patternDepth')} value={frame.pattern.depth} min={0.2} max={3} step={0.1} onChange={bind((p, v) => (p.frame.pattern.depth = v))} />
+                <Slider label={t('patternMargin')} value={frame.pattern.margin} min={0} max={15} step={0.5} onChange={bind((p, v) => (p.frame.pattern.margin = v))} />
+                {frame.width < frame.pattern.size * 2 + frame.pattern.margin * 2 && <p className="hint warn">{t('patternNarrow')}</p>}
+              </>
+            )}
           </Section>
           {frame.mode === 'separate' && <Section title={t('frameJoints')}>
             <Segmented

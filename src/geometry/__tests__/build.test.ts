@@ -7,6 +7,7 @@ import { ACCESSORIES, defaultParams } from '../accessories/defs';
 import { defaultProject } from '../../model/defaults';
 import { FRAME_STYLES } from '../frames/styles';
 import { makeTestKit } from '../../model/testKit';
+import { FRAME_PRESETS } from '../../model/framePresets';
 import { Scope, signedArea, type Kernel } from '../kernel';
 
 let K: Kernel;
@@ -60,6 +61,36 @@ describe('build', () => {
         m.delete();
       }
       console.log(style.id, frames.length, 'parts', (vol / 1000).toFixed(1), 'cm3, screws', frames.reduce((a, f) => a + f.screws.length, 0));
+      s.free();
+      L.scope.free();
+    }
+  });
+
+  it('builds the frame presets (honeycomb relief, round inner edge) as single solids', () => {
+    const litSeparate = { id: 'lit-separate', name: '', apply: (f: ReturnType<typeof defaultProject>['frame']) => {
+      FRAME_PRESETS.find((x) => x.id === 'hex-lit')!.apply(f);
+      Object.assign(f, { mode: 'separate', width: 40 });
+    } };
+    for (const preset of [...FRAME_PRESETS, litSeparate]) {
+      const p = defaultProject();
+      p.wall.width = 700;
+      p.wall.height = 500;
+      preset.apply(p.frame);
+      const L = computeLayout(K, p);
+      if (p.frame.pattern.mode !== 'none') expect(L.layout.pattern?.length ?? 0).toBeGreaterThan(p.frame.pattern.mode === 'lit' ? 0 : 50);
+      const s = new Scope();
+      const cache = prepareTools(K, L, p, s);
+      const t = performance.now();
+      let vol = 0;
+      for (const piece of L.layout.pieces) {
+        if (piece.kind === 'panel' && !piece.framePolys) continue;
+        const m = buildPiece(K, L, piece.id, cache)!;
+        expect(m.status()).toBe('NoError');
+        expect(m.decompose().length).toBe(1);
+        vol += m.volume();
+        m.delete();
+      }
+      console.log(preset.id, L.layout.pattern?.length ?? 0, 'pockets', (vol / 1000).toFixed(0), 'cm3', (performance.now() - t).toFixed(0), 'ms', L.layout.warnings);
       s.free();
       L.scope.free();
     }

@@ -62,7 +62,7 @@ export function migrate(p: Partial<Project>): Project {
     ...d,
     ...p,
     wall: { ...d.wall, ...p.wall },
-    frame: { ...d.frame, ...p.frame, led: { ...d.frame.led, ...p.frame?.led } },
+    frame: { ...d.frame, ...p.frame, led: { ...d.frame.led, ...p.frame?.led }, pattern: { ...d.frame.pattern, ...p.frame?.pattern } },
     grid: { ...d.grid, ...p.grid },
     mount: { ...d.mount, ...p.mount },
     printer: { ...d.printer, ...p.printer },

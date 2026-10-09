@@ -49,6 +49,8 @@ export interface LayoutInternal {
   frameParts: Map<string, FrameParts>;
   /** Integrated frame: the part of the frame band each edge panel carries. */
   frameBands: Map<string, CrossSection>;
+  /** Pockets of the decorative frame pattern (2D), cut into the frame front. */
+  pattern: FramePattern | null;
 }
 
 /** A frame piece: full-height core plus half-height lap ends lying on top of (high) or under (low) its neighbours. */
@@ -450,10 +452,16 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     if (p.printAngle === null) warnings.push('warnPieceTooBig');
   }
 
+  // ---- Decorative pattern on the frame front -----------------------------
+  const pattern = hasFrame && !inner.isEmpty() && frame.pattern.mode !== 'none'
+    ? framePattern(K, s, project, outer, inner, lipInner, cuts, cutCS, pieces.flatMap((p) => p.screws), [...frameParts.values()].flatMap((f) => [...f.high, ...f.low]))
+    : null;
+
   const ob = outer.bounds();
   const layout: Layout = {
     outer: polysOf(outer),
     inner: hasFrame ? polysOf(inner) : [],
+    pattern: pattern ? polysOf(pattern.cut) : undefined,
     cells,
     pieces,
     connectors,
@@ -470,7 +478,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands };
+  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands, pattern };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -1102,4 +1110,89 @@ function frameScrews(
     }
   }
   return out;
+}
+
+/** Frame relief: what is cut from the front, and for `lit` the hollow under it. */
+export interface FramePattern {
+  cut: CrossSection;
+  hollow: CrossSection | null;
+}
+
+/**
+ * Frame relief. `hex`: small pockets that stay a border away from the edges,
+ * cutouts, the LED groove and screws (pockets clipped to less than half are
+ * dropped). `lit`: the wall's own honeycomb continued over the frame as
+ * grooves whose thin floor covers a hollow back, so a strip inside lights
+ * the pattern up.
+ */
+function framePattern(
+  K: Kernel,
+  s: Scope,
+  project: Project,
+  outer: CrossSection,
+  inner: CrossSection,
+  edge: CrossSection,
+  cuts: Cutout[],
+  cutCS: CrossSection[],
+  screws: Vec2[],
+  keepSolid: CrossSection[],
+): FramePattern | null {
+  const { CrossSection: CS } = K;
+  const { frame, mount, grid } = project;
+  const pt = frame.pattern;
+  const margin = Math.max(0, pt.margin);
+  const lit = pt.mode === 'lit';
+  const keepOut: CrossSection[] = cuts.map((c, i) => s.t(cutCS[i].offset(c.chamfer + c.rim + (lit ? 2 : margin), 'Round', 2, 48)));
+  if (lit) {
+    const wall = Math.max(1.2, margin);
+    // Inner wall: past the panel edge (and the ledge over it) by `wall`.
+    const ledge = edge === inner ? 0 : 1.5;
+    let zone = s.t(s.t(outer.offset(-wall, 'Round', 2, 96)).subtract(s.t(inner.offset(wall + ledge, 'Round', 2, 96))));
+    for (const [x, y] of screws) keepOut.push(s.t(s.t(CS.circle(mount.headDiameter / 2 + 1.6, 32)).translate([x, y])));
+    for (const k of keepSolid) keepOut.push(s.t(k.offset(1, 'Miter')));
+    if (keepOut.length) zone = s.t(zone.subtract(s.t(CS.union(keepOut))));
+    if (zone.isEmpty()) return null;
+    const groove = Math.max(0.8, Math.min(pt.rib, 8));
+    const b = zone.bounds();
+    const { c0, c1, r0, r1 } = latticeRange(b.min[0], b.min[1], b.max[0], b.max[1], grid);
+    const tiles: Vec2[][] = [];
+    for (let c = c0; c <= c1; c++)
+      for (let r = r0; r <= r1; r++) {
+        const [x, y] = cellCenter(c, r, grid);
+        tiles.push(hexagon(PITCH_Y - groove, x, y));
+      }
+    const cut = s.t(zone.subtract(s.t(new CS(tiles, 'Positive'))));
+    return cut.isEmpty() ? null : { cut, hollow: zone };
+  }
+  const size = Math.max(3, pt.size);
+  const rib = Math.max(0.6, Math.min(pt.rib, size - 1.5));
+  let zone = s.t(s.t(outer.offset(-margin, 'Round', 2, 96)).subtract(s.t(edge.offset(margin + frame.innerChamfer, 'Round', 2, 96))));
+  if (frame.led.mode === 'front') {
+    const w = Math.min(frame.led.width, frame.width - 3) / 2 + rib;
+    keepOut.push(s.t(s.t(outer.offset(-(frame.width / 2 - w), 'Round', 2, 96)).subtract(s.t(outer.offset(-(frame.width / 2 + w), 'Round', 2, 96)))));
+  }
+  for (const [x, y] of screws) keepOut.push(s.t(s.t(CS.circle(mount.headDiameter / 2 + rib + 0.5, 32)).translate([x, y])));
+  if (keepOut.length) zone = s.t(zone.subtract(s.t(CS.union(keepOut))));
+  if (zone.isEmpty()) return null;
+  const loose = polysOf(s.t(zone.offset(size, 'Miter')));
+  const b = zone.bounds();
+  const dx = (size * 1.5) / Math.sqrt(3);
+  const flat = size - rib;
+  const full = (Math.sqrt(3) / 2) * flat * flat;
+  const pockets: Vec2[][] = [];
+  for (let i = Math.floor(b.min[0] / dx) - 1; i <= Math.ceil(b.max[0] / dx) + 1; i++) {
+    const half = ((i % 2) + 2) % 2 === 1 ? 0.5 : 0;
+    for (let j = Math.floor(b.min[1] / size) - 1; j <= Math.ceil(b.max[1] / size) + 1; j++) {
+      const x = i * dx,
+        y = (j + half) * size;
+      if (pointInPolys(x, y, loose)) pockets.push(hexagon(flat, x, y));
+    }
+  }
+  if (!pockets.length) return null;
+  const clipped = s.t(s.t(new CS(pockets, 'Positive')).intersect(zone));
+  const kept = clipped.decompose().filter((p) => {
+    s.t(p);
+    return p.area() > full * 0.5;
+  });
+  return kept.length ? { cut: s.t(CS.compose(kept)), hollow: null } : null;
 }

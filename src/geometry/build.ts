@@ -40,11 +40,30 @@ export function mountTool(K: Kernel, s: Scope, project: Project, hole: Manifold)
   return s.t(Manifold.union([s.t(hole.subtract(slab)), shaft, cone]));
 }
 
-/** Straight through-cut with a chamfered front edge. */
-function chamferedCut(K: Kernel, s: Scope, cs: CrossSection, frontZ: number, ch: number): Manifold {
+/** Straight through-cut with a chamfered (or rounded) front edge. */
+function chamferedCut(K: Kernel, s: Scope, cs: CrossSection, frontZ: number, ch: number, round = false): Manifold {
   const { Manifold } = K;
   const body = s.t(s.t(cs.extrude(frontZ + 2)).translate([0, 0, -1]));
   if (ch <= 0.05) return body;
+  if (round) {
+    // Quarter-round edge: the cut widens along a circle, in thin bands.
+    const n = Math.max(6, Math.ceil(ch / 0.25));
+    const lv = Array.from({ length: n + 1 }, (_, i) => {
+      const a = (Math.PI / 2) * (i / n);
+      return { o: ch * (1 - Math.cos(a)), z: frontZ - ch + ch * Math.sin(a) };
+    });
+    lv.push({ o: ch, z: frontZ + 1 });
+    const at = (o: number) => (o > 0.001 ? s.t(cs.offset(o, 'Round', 2, 64)) : cs);
+    const parts: Manifold[] = [body];
+    if (isConvex(cs)) {
+      const slab = (o: number, z: number) => s.t(s.t(s.t(at(o)).extrude(0.001)).translate([0, 0, z]));
+      for (let i = 1; i < lv.length; i++) parts.push(s.t(Manifold.hull([slab(lv[i - 1].o, lv[i - 1].z), slab(lv[i].o, lv[i].z)])));
+    } else {
+      for (let i = 1; i < lv.length; i++)
+        parts.push(s.t(s.t(s.t(at(lv[i].o)).extrude(frontZ + 1 - lv[i - 1].z + 0.002)).translate([0, 0, lv[i - 1].z - 0.001])));
+    }
+    return s.t(Manifold.union(parts));
+  }
   if (isConvex(cs)) {
     const top = s.t(s.t(s.t(cs.offset(ch, 'Round', 2, 32)).extrude(1)).translate([0, 0, frontZ]));
     const mid = s.t(s.t(cs.extrude(0.001)).translate([0, 0, frontZ - ch]));
@@ -66,7 +85,7 @@ function cutoutTools(K: Kernel, s: Scope, cuts: Cutout[], frontZ: number): Manif
 
 /** Space the frame leaves for the panels: up to the panel front at the inner edge, above it only inside the lip. */
 function innerCut(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Manifold {
-  const front = chamferedCut(K, s, L.lipInner, L.frontZ, project.frame.innerChamfer);
+  const front = chamferedCut(K, s, L.lipInner, L.frontZ, project.frame.innerChamfer, project.frame.innerProfile === 'round');
   if (L.lip <= 0) return front;
   // Under the lip: room for the panel edge plus a little clearance.
   const under = s.t(s.t(L.inner.extrude(DEPTH + LIP_CLEARANCE + 1)).translate([0, 0, -1]));
@@ -178,6 +197,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
         let framePart = s.t(s.t(cache.get('outer')!.intersect(clip)).subtract(cache.get('inner')!));
         for (const t of cutoutTools(K, s, near, L.frontZ)) framePart = s.t(framePart.subtract(t));
         if (cache.has('led')) framePart = s.t(framePart.subtract(cache.get('led')!));
+        if (cache.has('pattern')) framePart = s.t(framePart.subtract(cache.get('pattern')!));
         if (piece.screws.length) {
           const st = cache.get('screw')!;
           framePart = s.t(framePart.subtract(s.t(Manifold.compose(piece.screws.map(([x, y]) => s.t(st.translate([x, y, 0])))))));
@@ -227,6 +247,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
     let body = s.t(s.t(outer.intersect(clip)).subtract(inner));
     for (const t of cutoutTools(K, s, L.cuts, L.frontZ)) body = s.t(body.subtract(t));
     if (cache.has('led')) body = s.t(body.subtract(cache.get('led')!));
+    if (cache.has('pattern')) body = s.t(body.subtract(cache.get('pattern')!));
     if (project.printer.engrave) {
       // Mirrored label on the back face, readable when the part is turned over.
       const h = Math.max(3, Math.min(7, project.frame.width * 0.45));
@@ -253,6 +274,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
 
 /** Shared tools for a layout; caller frees the scope. */
 export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: Scope) {
+  const { Manifold } = K;
   const cache = new Map<string, Manifold>();
   const hole = holeTool(K, s, project.printer.holeTolerance);
   cache.set('hole', hole);
@@ -283,6 +305,27 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
     cache.set('screw', screwTool(K, s, project, L.frontZ - (ledFront ? Math.min(project.frame.led.depth, L.frontZ - 2) : 0)));
     const led = ledTool(K, s, L, project);
     if (led) cache.set('led', led);
+    const pt = project.frame.pattern;
+    if (L.pattern && pt.mode === 'lit') {
+      // Hollow back under a front plate; grooves leave a thin floor the light shines through.
+      const top = L.frontZ - Math.max(pt.skin + 0.8, Math.min(pt.plate, L.frontZ - 1.5));
+      const hollow = s.t(s.t(L.pattern.hollow!.extrude(top + 1)).translate([0, 0, -1]));
+      const floor = top + Math.max(0.2, pt.skin);
+      const grooves = s.t(s.t(L.pattern.cut.extrude(L.frontZ + 4 - floor)).translate([0, 0, floor]));
+      const tools = [hollow, grooves];
+      // Notch for the cable through the outer wall at the lowest point.
+      const pts = L.outer.toPolygons().flat();
+      const low = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
+      tools.push(s.t(Manifold.cube([8, Math.max(8, pt.margin * 2 + 4), Math.min(5, top) + 1]).translate([low[0] - 4, low[1] - 4, -1])));
+      cache.set('pattern', s.t(Manifold.union(tools)));
+    } else if (L.pattern) {
+      // Pockets follow the styled front: a skin `depth` thick under the top surface.
+      const d = Math.max(0.2, Math.min(pt.depth, L.frontZ - 2));
+      const outer = cache.get('outer')!;
+      const skin = s.t(outer.subtract(s.t(outer.translate([0, 0, -d]))));
+      const prism = s.t(s.t(L.pattern.cut.extrude(L.frontZ + 4)).translate([0, 0, -1]));
+      cache.set('pattern', s.t(prism.intersect(skin)));
+    }
   }
   return cache;
 }

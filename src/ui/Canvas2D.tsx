@@ -428,6 +428,16 @@ export function Canvas2D() {
               <path d={pathOf(p.polys)} fill="url(#frameSheen)" fillRule="evenodd" />
             </g>
           ))}
+          {layout.pattern && project.frame.pattern.mode === 'lit' ? (
+            <path d={pathOf(layout.pattern)} fill="#ffd28a" fillOpacity={0.55} />
+          ) : layout.pattern && (
+            <path
+              d={pathOf(layout.pattern)}
+              fill={mix(project.frame.mode === 'integrated' ? colors.panel : colors.frame, '#000', 0.22)}
+              stroke={mix(project.frame.mode === 'integrated' ? colors.panel : colors.frame, '#fff', 0.12)}
+              strokeWidth={sw * 0.6}
+            />
+          )}
           {layout.inner.length > 0 && (
             <path
               d={pathOf(layout.inner)}
