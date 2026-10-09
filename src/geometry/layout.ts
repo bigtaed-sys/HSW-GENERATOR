@@ -682,7 +682,7 @@ function ring(poly: Vec2[]): Ring {
   return { pts, cum, length: cum[n], curved };
 }
 
-function pointAt(rg: Ring, s: number): { p: Vec2; t: Vec2 } {
+export function pointAt(rg: Ring, s: number): { p: Vec2; t: Vec2 } {
   const L = rg.length;
   s = ((s % L) + L) % L;
   let i = 0;
@@ -723,7 +723,7 @@ export function seamPath(K: Kernel, s: Scope, c: FrameCut, width: number, grid: 
       const [x, y] = cellCenter(i, j, grid);
       const along = (x - c.p[0]) * c.t[0] + (y - c.p[1]) * c.t[1];
       const across = (x - c.p[0]) * n[0] + (y - c.p[1]) * n[1];
-      if (across < -10 || across > width + 10 || Math.abs(along) > PITCH_Y * 1.3) continue;
+      if (across < -PITCH_Y || across > width + PITCH_Y || Math.abs(along) > PITCH_Y * 1.3) continue;
       (along < 0 ? left : right).push(tile(x, y));
     }
   if (!left.length || !right.length) return null;
