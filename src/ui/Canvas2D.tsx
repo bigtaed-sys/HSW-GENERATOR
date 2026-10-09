@@ -530,6 +530,19 @@ export function Canvas2D() {
               </g>
             );
           })}
+          {layout.plates?.map((pl) => {
+            const x = v.tx + pl.anchor[0] * v.s,
+              y = v.ty - pl.anchor[1] * v.s;
+            const w = 12 + pl.label.length * 6.5;
+            return (
+              <g key={pl.id} transform={`translate(${x},${y})`} opacity={v.s < 0.25 ? 0 : 1}>
+                <rect x={-w / 2} y={-8} width={w} height={16} rx={8} fill="rgba(37,99,235,.92)" />
+                <text textAnchor="middle" dy="4" fontSize="10" fontWeight="700" fontFamily="var(--mono)" fill="#fff">
+                  {pl.label}
+                </text>
+              </g>
+            );
+          })}
         </g>
       )}
       {layout && (

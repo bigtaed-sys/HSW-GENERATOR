@@ -550,7 +550,11 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     inner: hasFrame ? polysOf(inner) : [],
     pattern: pattern ? polysOf(pattern.cut) : undefined,
     led,
-    plates: plates.map((p, i) => ({ id: `j${i}`, label: `J${i + 1}`, polys: polysOf(p) })),
+    plates: plates.map((p, i) => {
+      const polys = polysOf(p);
+      const { top, floor } = litLevels(frame, frontZ);
+      return { id: `j${i}`, label: `J${i + 1}`, polys, z0: top, z1: floor, anchor: centroid(polys) };
+    }),
     cells,
     pieces,
     connectors,

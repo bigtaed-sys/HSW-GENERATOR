@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { DEPTH } from '../geometry/constants';
-import { cellAt, cellCenter } from '../geometry/lattice';
+import { cellAt, cellCenter, type Vec2 } from '../geometry/lattice';
 import { defaultParams } from '../geometry/accessories/defs';
 import { PALETTE } from '../model/defaults';
 import { cellIndex, isPlacementValid } from '../model/placement';
@@ -30,6 +30,23 @@ function toGeometry(mesh: MeshData) {
     g.computeBoundingBox();
     indexed.dispose();
     geomCache.set(mesh, g);
+  }
+  return g;
+}
+
+const patchMat = new THREE.MeshStandardMaterial({ color: '#3b82f6', roughness: 0.5 });
+
+const plateCache = new WeakMap<object, THREE.BufferGeometry>();
+
+/** A seam patch: its outline extruded to its thickness, from z = 0. */
+function plateGeometry(polys: Vec2[][], thick: number) {
+  let g = plateCache.get(polys);
+  if (!g) {
+    const shapes = polys
+      .filter((p) => Math.abs(THREE.ShapeUtils.area(p.map(([x, y]) => new THREE.Vector2(x, y)))) > 1)
+      .map((p) => new THREE.Shape(p.map(([x, y]) => new THREE.Vector2(x, y))));
+    g = new THREE.ExtrudeGeometry(shapes, { depth: thick, bevelEnabled: false });
+    plateCache.set(polys, g);
   }
   return g;
 }
@@ -149,6 +166,17 @@ function Scene() {
           />
         );
       })}
+      {layout?.plates?.map((pl) => (
+        <mesh
+          key={pl.id}
+          geometry={plateGeometry(pl.polys, pl.z1 - pl.z0)}
+          material={exploded ? patchMat : project.frame.mode === 'integrated' ? panelMat : frameMat}
+          // In place they hide in the pockets behind the plate; the exploded view lifts them out in front, marked blue.
+          position={[0, 0, exploded ? (project.frame.mode === 'integrated' ? 15 : 30) + DEPTH + project.frame.proud + 25 : pl.z0]}
+          castShadow
+          receiveShadow
+        />
+      ))}
       {layout?.connectors.map((k) => {
         const shape = shapes[shapeKey('connector', k.params)];
         if (!shape) return null;

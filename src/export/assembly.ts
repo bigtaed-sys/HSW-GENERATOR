@@ -42,21 +42,36 @@ export function assemblySvg(
     })
     .join('');
   const pieces = layout.pieces
-    .map((p) => {
-      const [cx, cy] = p.anchor;
-      const fill = p.kind === 'frame' ? '#f3e6d6' : '#f4f4f4';
-      return `<path d="${pathOf(p.polys)}" fill="${fill}" fill-rule="evenodd" stroke="#222" stroke-width="0.8"/>
-<text x="${cx.toFixed(1)}" y="${(-cy + 6).toFixed(1)}" font-size="18" font-weight="700" text-anchor="middle" fill="#d0800f">${p.label}</text>`;
+    .map((p) => `<path d="${pathOf(p.polys)}" fill="${p.kind === 'frame' ? '#f3e6d6' : '#f4f4f4'}" fill-rule="evenodd" stroke="#222" stroke-width="0.8"/>`)
+    .join('\n');
+  // Labels go on top of the cells, with a white halo so they stay readable over the holes.
+  const halo = 'stroke="#fff" stroke-width="4" stroke-linejoin="round" paint-order="stroke"';
+  const labels = layout.pieces
+    .map(
+      (p) =>
+        `<text x="${p.anchor[0].toFixed(1)}" y="${(-p.anchor[1] + 6).toFixed(1)}" font-size="18" font-weight="700" text-anchor="middle" fill="#d0800f" ${halo}>${p.label}</text>`,
+    )
+    .join('\n');
+  // Seam patches (Backlit cells): glued in from the back, shown dashed.
+  const plates = (layout.plates ?? [])
+    .map((pl) => {
+      const pts = pl.polys.flat();
+      const cx = pts.reduce((a, q) => a + q[0], 0) / pts.length,
+        cy = pts.reduce((a, q) => a + q[1], 0) / pts.length;
+      return `<path d="${pathOf(pl.polys)}" fill="#2563eb" fill-opacity="0.12" stroke="#2563eb" stroke-width="0.8" stroke-dasharray="3 2"/>
+<text x="${cx.toFixed(1)}" y="${(-cy + 4).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="#1d4ed8" ${halo}>${pl.label}</text>`;
     })
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(0)}mm" height="${H.toFixed(0)}mm" viewBox="${(x0 - pad).toFixed(1)} ${(-y1 - pad - 40).toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}" font-family="Inter, Arial, sans-serif">
 <rect x="${(x0 - pad).toFixed(1)}" y="${(-y1 - pad - 40).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" fill="#fff"/>
 <text x="${(x0).toFixed(1)}" y="${(-y1 - pad + 4).toFixed(1)}" font-size="20" font-weight="700" fill="#111">${title.replace(/[<&>]/g, '')}</text>
-<text x="${(x0).toFixed(1)}" y="${(-y1 - pad + 24).toFixed(1)}" font-size="11" fill="#666">${layout.stats.width.toFixed(0)} × ${layout.stats.height.toFixed(0)} mm · ${layout.stats.panels} + ${layout.stats.framePieces}</text>
+<text x="${(x0).toFixed(1)}" y="${(-y1 - pad + 24).toFixed(1)}" font-size="11" fill="#666">${layout.stats.width.toFixed(0)} × ${layout.stats.height.toFixed(0)} mm · ${layout.stats.panels}${layout.stats.framePieces ? ` + ${layout.stats.framePieces}` : ''}${layout.plates?.length ? ` + ${layout.plates.length} J` : ''}</text>
 ${pieces}
 <path d="${holes}" fill="#bbb" fill-rule="nonzero"/>
 <g fill="#222">${mounts}${screws}</g>
 ${acc}
+${plates}
+${labels}
 </svg>`;
 }
