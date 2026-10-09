@@ -139,6 +139,27 @@ describe('build', () => {
     }
   });
 
+  it('cuts LED channels in separate and integrated frames', () => {
+    for (const mode of ['separate', 'integrated'] as const)
+      for (const led of ['front', 'halo'] as const) {
+        const p = defaultProject();
+        p.frame.mode = mode;
+        p.frame.width = 24;
+        p.frame.led.mode = led;
+        const L = computeLayout(K, p);
+        const s = new Scope();
+        const cache = prepareTools(K, L, p, s);
+        const ids = L.layout.pieces.filter((x) => x.kind === 'frame' || x.framePolys).map((x) => x.id);
+        for (const id of ids.slice(0, 4)) {
+          const m = buildPiece(K, L, id, cache)!;
+          expect(m.decompose().length).toBe(1);
+          m.delete();
+        }
+        s.free();
+        L.scope.free();
+      }
+  });
+
   it('builds all accessories', () => {
     for (const def of ACCESSORIES) {
       const s = new Scope();

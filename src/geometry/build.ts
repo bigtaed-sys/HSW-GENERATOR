@@ -65,6 +65,31 @@ function innerCut(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Man
 
 const LIP_CLEARANCE = 0.2;
 
+/** Cut for an LED strip: a groove in the frame front, or a rebate at the back outer edge (halo). */
+function ledTool(K: Kernel, s: Scope, L: LayoutInternal, project: Project): Manifold | null {
+  const { led, width } = project.frame;
+  if (led.mode === 'none') return null;
+  const { Manifold } = K;
+  const ring = (a: number, b: number) =>
+    s.t(s.t(L.outer.offset(-a, 'Round', 2, 96)).subtract(s.t(L.outer.offset(-b, 'Round', 2, 96))));
+  if (led.mode === 'halo') {
+    const w = Math.min(led.width, width - 3);
+    const d = Math.min(led.depth, L.frontZ - 2);
+    return s.t(s.t(ring(-2, w).extrude(d + 1)).translate([0, 0, -1]));
+  }
+  const w = Math.min(led.width, width - 3);
+  const d = Math.min(led.depth, L.frontZ - 2);
+  const groove = s.t(s.t(ring(width / 2 - w / 2, width / 2 + w / 2).extrude(d + 1)).translate([0, 0, L.frontZ - d]));
+  if (!led.wire) return groove;
+  // Cable hole through to the back at the lowest point of the groove.
+  const mid = L.outer.offset(-width / 2, 'Round', 2, 96);
+  s.t(mid);
+  const pts = mid.toPolygons().flat();
+  const low = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
+  const hole = s.t(s.t(Manifold.cylinder(L.frontZ + 4, Math.min(3, w / 2), Math.min(3, w / 2), 32)).translate([low[0], low[1], -2]));
+  return s.t(groove.add(hole));
+}
+
 function screwTool(K: Kernel, s: Scope, project: Project, frontZ: number): Manifold {
   const { Manifold } = K;
   const { screwDiameter: sd, headDiameter: hd } = project.mount;
@@ -141,6 +166,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
         const clip = s.t(s.t(band.extrude(H + 2)).translate([0, 0, -2]));
         let framePart = s.t(s.t(cache.get('outer')!.intersect(clip)).subtract(cache.get('inner')!));
         for (const t of cutoutTools(K, s, near, L.frontZ)) framePart = s.t(framePart.subtract(t));
+        if (cache.has('led')) framePart = s.t(framePart.subtract(cache.get('led')!));
         if (piece.screws.length) {
           const st = cache.get('screw')!;
           framePart = s.t(framePart.subtract(s.t(Manifold.compose(piece.screws.map(([x, y]) => s.t(st.translate([x, y, 0])))))));
@@ -189,6 +215,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
     const clip = s.t(Manifold.union(clips));
     let body = s.t(s.t(outer.intersect(clip)).subtract(inner));
     for (const t of cutoutTools(K, s, L.cuts, L.frontZ)) body = s.t(body.subtract(t));
+    if (cache.has('led')) body = s.t(body.subtract(cache.get('led')!));
     if (project.printer.engrave) {
       // Mirrored label on the back face, readable when the part is turned over.
       const h = Math.max(3, Math.min(7, project.frame.width * 0.45));
@@ -232,8 +259,19 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
         p: frameStyleParams(project.frame),
       }),
     );
+    if (L.lip > 0) {
+      // Whatever the style does to the inner part, keep a solid ledge over the panel edges.
+      const ledgeTop = Math.min(L.frontZ, DEPTH + LIP_CLEARANCE + 1.4);
+      const zone = s.t(s.t(L.outer.offset(-(project.frame.width - 1.5), 'Round', 2, 96)).subtract(L.lipInner));
+      const ledge = s.t(s.t(zone.extrude(ledgeTop + 0.5)).translate([0, 0, -0.5]));
+      cache.set('outer', s.t(cache.get('outer')!.add(ledge)));
+    }
     cache.set('inner', innerCut(K, s, L, project));
-    cache.set('screw', screwTool(K, s, project, L.frontZ));
+    // With a front LED groove the screws sit (hidden) at the bottom of the groove.
+    const ledFront = project.frame.led.mode === 'front';
+    cache.set('screw', screwTool(K, s, project, L.frontZ - (ledFront ? Math.min(project.frame.led.depth, L.frontZ - 2) : 0)));
+    const led = ledTool(K, s, L, project);
+    if (led) cache.set('led', led);
   }
   return cache;
 }

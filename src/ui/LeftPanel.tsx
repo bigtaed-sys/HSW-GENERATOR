@@ -222,6 +222,30 @@ function FrameTab() {
               <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
             </Section>
           )}
+          <Section title={t('ledTitle')}>
+            <Segmented
+              value={frame.led.mode}
+              onChange={(v) => update((p) => void (p.frame.led.mode = v))}
+              options={[
+                { value: 'none', label: t('ledNone') },
+                { value: 'front', label: t('ledFront') },
+                { value: 'halo', label: t('ledHalo') },
+              ]}
+            />
+            <p className="hint" style={{ marginBottom: 12 }}>
+              {frame.led.mode === 'front' ? t('ledFrontHint') : frame.led.mode === 'halo' ? t('ledHaloHint') : t('ledNoneHint')}
+            </p>
+            {frame.led.mode !== 'none' && (
+              <>
+                <Slider label={t('ledWidth')} value={frame.led.width} min={5} max={30} step={0.5} onChange={bind((p, v) => (p.frame.led.width = v))} />
+                <Slider label={t('ledDepth')} value={frame.led.depth} min={1} max={8} step={0.5} onChange={bind((p, v) => (p.frame.led.depth = v))} />
+                {frame.led.mode === 'front' && (
+                  <Toggle label={t('ledWire')} checked={frame.led.wire} onChange={(v) => update((p) => void (p.frame.led.wire = v))} />
+                )}
+                {frame.led.width > frame.width - 3 && <p className="hint warn">{t('ledTooWide')}</p>}
+              </>
+            )}
+          </Section>
           {frame.mode === 'separate' && (
             <Section title={t('frameColor')}>
               <Swatches value={color} onChange={(v) => update((p) => void (p.colors.frame = v))} />

@@ -33,6 +33,18 @@ export interface FrameSettings {
   screws: boolean;
   joint: FrameJoint;
   jointLength: number;
+  led: LedSettings;
+}
+
+export type LedMode = 'none' | 'front' | 'halo';
+
+export interface LedSettings {
+  /** front: groove for a strip in the frame front; halo: rebate at the back outer edge for wall glow. */
+  mode: LedMode;
+  width: number;
+  depth: number;
+  /** Hole for the cable at the bottom of the frame. */
+  wire: boolean;
 }
 
 export interface GridSettings {

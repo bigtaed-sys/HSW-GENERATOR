@@ -51,6 +51,7 @@ export function defaultProject(): Project {
       screws: true,
       joint: 'lap',
       jointLength: 40,
+      led: { mode: 'none', width: 12, depth: 3, wire: true },
     },
     grid: { mode: 'whole', minEdge: 1.8, minPartial: 0.3, offsetX: 0, offsetY: 0, flipStagger: false },
     mount: { mode: 'connectors', junctions: true, seams: false, spacing: 150, edges: true, edgeSpacing: 250, minPerPanel: 1, perPanel: 4, screwDiameter: 4, headDiameter: 8, floor: 2.4 },

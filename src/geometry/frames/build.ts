@@ -80,6 +80,32 @@ export const FRAME_BUILDERS: Record<string, Builder> = {
     const top = s.t(outer.offset(-(width - flat), 'Round', 2, 96));
     return s.t(K.Manifold.hull([slab(outer, -EPS, frontZ - drop), slab(top, frontZ - 0.001, frontZ)]));
   },
+
+  bead: ({ K, s, outer, width, frontZ, p }) => {
+    const b = Math.min(p.bead ?? 6, width - 2);
+    const drop = Math.min(p.drop ?? 2, frontZ - 2);
+    const body = profiledPrism(K, s, outer, frontZ, 2, b / 2);
+    const lower = s.t(s.t(s.t(outer.offset(-b, 'Round', 2, 96)).extrude(drop + 1)).translate([0, 0, frontZ - drop]));
+    return s.t(body.subtract(lower));
+  },
+
+  cove: ({ K, s, outer, width, frontZ, p }) => {
+    const drop = Math.min(p.drop ?? 4, frontZ - 1.5);
+    const rim = width * ((p.flat ?? 15) / 100);
+    const run = Math.max(1, width - rim);
+    let body = profiledPrism(K, s, outer, frontZ, 2, Math.min(1, rim / 2));
+    // Concave quarter-circle, cut as thin terraces (finer than a print layer).
+    const steps = 24;
+    const cuts: Manifold[] = [];
+    for (let i = 1; i <= steps; i++) {
+      const u = i / steps;
+      const inset = rim + run * (1 - Math.cos((u * Math.PI) / 2));
+      const z = frontZ - drop * u;
+      cuts.push(s.t(s.t(s.t(outer.offset(-inset, 'Round', 2, 96)).extrude(frontZ - z + 1)).translate([0, 0, z])));
+    }
+    body = s.t(body.subtract(s.t(K.Manifold.union(cuts))));
+    return body;
+  },
 };
 
 export function buildFrameStyle(c: FrameCtx & { style: string }): Manifold {
