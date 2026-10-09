@@ -14,6 +14,7 @@ import {
 } from './kernel';
 import { cellCenter, hexagon, latticeRange, tile, type Vec2 } from './lattice';
 import { placeConnectors } from './connectors';
+import { frameStyleParams } from './frames/styles';
 import type { Layout, LayoutCell, LayoutPiece } from './layoutTypes';
 
 const hexArea = (flat: number) => (Math.sqrt(3) / 2) * flat * flat;
@@ -453,7 +454,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   }
 
   // ---- Decorative pattern on the frame front -----------------------------
-  const pattern = hasFrame && !inner.isEmpty() && frame.pattern.mode !== 'none'
+  const pattern = hasFrame && !inner.isEmpty() && (frame.style === 'cells' || frame.style === 'lit')
     ? framePattern(K, s, project, outer, inner, lipInner, cuts, cutCS, pieces.flatMap((p) => p.screws), [...frameParts.values()].flatMap((f) => [...f.high, ...f.low]))
     : null;
 
@@ -1119,9 +1120,9 @@ export interface FramePattern {
 }
 
 /**
- * Frame relief. `hex`: small pockets that stay a border away from the edges,
+ * Frame relief. Small cells: pockets that stay a border away from the edges,
  * cutouts, the LED groove and screws (pockets clipped to less than half are
- * dropped). `lit`: the wall's own honeycomb continued over the frame as
+ * dropped). Backlit cells: the wall's own honeycomb continued over the frame as
  * grooves whose thin floor covers a hollow back, so a strip inside lights
  * the pattern up.
  */
@@ -1139,9 +1140,9 @@ function framePattern(
 ): FramePattern | null {
   const { CrossSection: CS } = K;
   const { frame, mount, grid } = project;
-  const pt = frame.pattern;
-  const margin = Math.max(0, pt.margin);
-  const lit = pt.mode === 'lit';
+  const pt = frameStyleParams(frame);
+  const lit = frame.style === 'lit';
+  const margin = Math.max(0, lit ? pt.wall : pt.margin);
   const keepOut: CrossSection[] = cuts.map((c, i) => s.t(cutCS[i].offset(c.chamfer + c.rim + (lit ? 2 : margin), 'Round', 2, 48)));
   if (lit) {
     const wall = Math.max(1.2, margin);
@@ -1152,7 +1153,7 @@ function framePattern(
     for (const k of keepSolid) keepOut.push(s.t(k.offset(1, 'Miter')));
     if (keepOut.length) zone = s.t(zone.subtract(s.t(CS.union(keepOut))));
     if (zone.isEmpty()) return null;
-    const groove = Math.max(0.8, Math.min(pt.rib, 8));
+    const groove = Math.max(0.8, Math.min(pt.groove, 8));
     const b = zone.bounds();
     const { c0, c1, r0, r1 } = latticeRange(b.min[0], b.min[1], b.max[0], b.max[1], grid);
     const tiles: Vec2[][] = [];
@@ -1164,7 +1165,7 @@ function framePattern(
     const cut = s.t(zone.subtract(s.t(new CS(tiles, 'Positive'))));
     return cut.isEmpty() ? null : { cut, hollow: zone };
   }
-  const size = Math.max(3, pt.size);
+  const size = Math.max(3, pt.cell);
   const rib = Math.max(0.6, Math.min(pt.rib, size - 1.5));
   let zone = s.t(s.t(outer.offset(-margin, 'Round', 2, 96)).subtract(s.t(edge.offset(margin + frame.innerChamfer, 'Round', 2, 96))));
   if (frame.led.mode === 'front') {

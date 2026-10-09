@@ -140,6 +140,10 @@ export const FRAME_BUILDERS: Record<string, Builder> = {
   },
 };
 
+// Relief styles: a classic rounded body; the relief itself is cut in build.ts (it follows the wall grid, screws and laps).
+FRAME_BUILDERS.cells = ({ K, s, outer, width, frontZ, p }) => profiledPrism(K, s, outer, frontZ, 2, Math.min(p.size ?? 4, width - 1));
+FRAME_BUILDERS.lit = FRAME_BUILDERS.cells;
+
 export function buildFrameStyle(c: FrameCtx & { style: string }): Manifold {
   return (FRAME_BUILDERS[c.style] ?? FRAME_BUILDERS.classic)(c);
 }

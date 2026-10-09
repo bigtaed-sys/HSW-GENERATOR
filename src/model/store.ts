@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { defaultProject } from './defaults';
-import type { Lang, Project } from './types';
+import type { FrameSettings, Lang, Project } from './types';
 
 export type Tool = 'select' | 'solid' | 'mount' | 'reset' | 'outline';
 export type ViewMode = '2d' | '3d';
@@ -46,6 +46,15 @@ function load(): { project?: Project; ui?: Partial<UiState> } {
   }
 }
 
+/** Fills in defaults; a short-lived `pattern` setting became the Small cells / Backlit cells styles. */
+function migrateFrame(d: FrameSettings, f?: Partial<FrameSettings> & { pattern?: { mode?: string } }): FrameSettings {
+  const { pattern, ...rest } = f ?? {};
+  const frame = { ...d, ...rest, led: { ...d.led, ...rest.led } };
+  if (pattern?.mode === 'hex') frame.style = 'cells';
+  if (pattern?.mode === 'lit') frame.style = 'lit';
+  return frame;
+}
+
 export function migrate(p: Partial<Project>): Project {
   const d = defaultProject();
   // v0.1 frames had a fixed profile instead of a style.
@@ -62,7 +71,7 @@ export function migrate(p: Partial<Project>): Project {
     ...d,
     ...p,
     wall: { ...d.wall, ...p.wall },
-    frame: { ...d.frame, ...p.frame, led: { ...d.frame.led, ...p.frame?.led }, pattern: { ...d.frame.pattern, ...p.frame?.pattern } },
+    frame: migrateFrame(d.frame, p.frame),
     grid: { ...d.grid, ...p.grid },
     mount: { ...d.mount, ...p.mount },
     printer: { ...d.printer, ...p.printer },

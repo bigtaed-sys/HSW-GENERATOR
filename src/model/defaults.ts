@@ -49,7 +49,6 @@ export function defaultProject(): Project {
       lip: 4,
       innerChamfer: 0.6,
       innerProfile: 'chamfer',
-      pattern: { mode: 'none', size: 9, rib: 1.6, depth: 0.8, margin: 4, plate: 3, skin: 0.6 },
       screws: true,
       joint: 'lap',
       jointLength: 40,

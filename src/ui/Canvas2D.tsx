@@ -428,7 +428,7 @@ export function Canvas2D() {
               <path d={pathOf(p.polys)} fill="url(#frameSheen)" fillRule="evenodd" />
             </g>
           ))}
-          {layout.pattern && project.frame.pattern.mode === 'lit' ? (
+          {layout.pattern && project.frame.style === 'lit' ? (
             <path d={pathOf(layout.pattern)} fill="#ffd28a" fillOpacity={0.55} />
           ) : layout.pattern && (
             <path
