@@ -365,7 +365,13 @@ export function Canvas2D() {
             </g>
           ))}
           {layout.inner.length > 0 && (
-            <path d={pathOf(layout.inner)} fill="none" stroke={frameDark ? 'rgba(255,255,255,.25)' : 'rgba(0,0,0,.25)'} strokeWidth={sw} />
+            <path
+              d={pathOf(layout.inner)}
+              fill="none"
+              stroke={frameDark ? 'rgba(255,255,255,.55)' : 'rgba(0,0,0,.45)'}
+              strokeWidth={sw}
+              strokeDasharray={project.frame.lip > 0 && project.frame.proud >= 1 ? `${4 * sw} ${3 * sw}` : undefined}
+            />
           )}
           {geo.frameScrews && <path d={geo.frameScrews} fill={mix(colors.frame, '#000', 0.35)} />}
           {/* Cells */}

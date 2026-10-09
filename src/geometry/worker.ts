@@ -255,9 +255,9 @@ async function handle(msg: WorkerRequest) {
       } else {
         const files: Record<string, Uint8Array> = {};
         for (const it of items) files[`${safe(it.name)}.stl`] = meshToStl(it.mesh, it.name);
-        if (items.some((it) => it.name.startsWith(names.connector ?? 'connector')))
+        if (items.some((it) => it.name.startsWith(names.connector ?? 'connector')) || (include.accessories && project.accessories.length))
           files['CREDITS.txt'] = strToU8(
-            'Connector parts: design adapted from PStover\'s HSW connectors, licensed CC BY-NC 4.0\n' +
+            'Inserts and connectors: HSW models by PStover, licensed CC BY-NC 4.0\n' +
               '(https://creativecommons.org/licenses/by-nc/4.0/). Non-commercial use only.\n' +
               'Honeycomb Storage Wall: original design by RostaP.\n' +
               'Generated with HSW Studio.\n',

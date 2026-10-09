@@ -3,6 +3,8 @@ import { ccw, Scope, type Kernel, type Manifold } from '../kernel';
 import { hexagon, type Vec2 } from '../lattice';
 import { accessoryDef } from './defs';
 import { buildConnector } from './connector';
+import { connectorOffsets } from '../connectors';
+import { pstoverConnector, pstoverInsert } from '../pstover';
 
 // Local accessory frame: origin at the front face of the anchor cell centre,
 // +Y up, +Z out of the wall. Inserts go into -Z.
@@ -56,11 +58,15 @@ const rod = (K: Kernel, s: Scope, d: number, len: number, seg = 32) =>
 
 export function buildAccessory(K: Kernel, s: Scope, type: string, p: Record<string, number>, tol = 0): Manifold {
   const { Manifold } = K;
-  if (type === 'connector') return buildConnector(K, s, p, tol, { d: p.screw ?? 4, head: p.head ?? 8 });
+  if (type === 'connector')
+    return pstoverConnector(K, s, connectorOffsets(p), tol) ?? buildConnector(K, s, p, tol, { d: p.screw ?? 4, head: p.head ?? 8 });
   const def = accessoryDef(type);
   if (!def) return s.t(Manifold.cube(1));
   const pegs = def.pegs(p).map(pegOffset);
-  const insert = insertPeg(K, s, tol);
+  // PStover's standard insert (CC BY-NC 4.0): proven fit on HSW cells.
+  // Its bore is open at the top, so accessories close it with a lid the body sits on.
+  const lid = s.t(s.t(s.t(new K.CrossSection([hexagon(INSERT.lip - 0.4)])).extrude(1.2)).translate([0, 0, INSERT.lipHeight - 1.2]));
+  const insert = s.t(pstoverInsert(K, s, tol).add(lid));
   const parts: Manifold[] = pegs.map(([x, y]) => s.t(insert.translate([x, y, 0])));
   const L = INSERT.lipHeight;
   const spanX = pegs.length ? pegs[pegs.length - 1][0] : 0;
@@ -187,7 +193,7 @@ export function buildAccessory(K: Kernel, s: Scope, type: string, p: Record<stri
       if (p.dome > 0) {
         const top = s.t(s.t(new K.CrossSection([hexagon(INSERT.lip - 2 * p.dome)])).extrude(0.01));
         const base = s.t(s.t(new K.CrossSection([hexagon(INSERT.lip)])).extrude(0.01));
-        parts.push(s.t(Manifold.hull([s.t(base.translate([0, 0, L - 0.01])), s.t(top.translate([0, 0, L + p.dome]))])));
+        parts.push(s.t(Manifold.hull([s.t(base.translate([0, 0, L - 0.6])), s.t(top.translate([0, 0, L + p.dome]))])));
       }
       break;
     }

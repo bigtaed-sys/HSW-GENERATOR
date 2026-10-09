@@ -120,7 +120,8 @@ export function placeConnectors(
     add(g, centroidIndex(g));
   }
 
-  // 2. Pairs along each seam between two panels, about `spacing` apart.
+  // 2. Pairs along seams, only where the gap between screws that already hold
+  // both panels (junction groups, other pairs) is longer than `spacing`.
   const seams = new Map<string, LayoutCell[][]>();
   for (const a of usable)
     for (const b of neighbours(a)) {
@@ -129,30 +130,41 @@ export function placeConnectors(
       seams.set(k, [...(seams.get(k) ?? []), [a, b]]);
     }
   for (const [k, pairs] of seams) {
+    // Panels that only touch at a corner are tied by the junction group there.
+    if (pairs.length < 3) continue;
     const [pa, pb] = k.split('|');
     const mids = pairs.map(([a, b]) => [(a.x + b.x) / 2, (a.y + b.y) / 2] as Vec2);
     const xs = mids.map((m) => m[0]),
       ys = mids.map((m) => m[1]);
     const horizontal = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
-    const t = mids.map((m) => (horizontal ? m[0] : m[1]));
+    const along = (p: Vec2) => (horizontal ? p[0] : p[1]);
+    const across = (p: Vec2) => (horizontal ? p[1] : p[0]);
+    const t = mids.map(along);
     const t0 = Math.min(...t),
       t1 = Math.max(...t);
-    const n = Math.max(1, Math.round((t1 - t0) / spacing));
-    for (let i = 0; i < n; i++) {
-      const target = t0 + ((i + 0.5) * (t1 - t0)) / n;
-      let best = -1;
-      for (let j = 0; j < pairs.length; j++) {
-        if (!pairs[j].every(free)) continue;
-        const m = mids[j];
-        const tooClose = screwPoints.some(
-          (sp) => (sp.panels.has(pa) || sp.panels.has(pb)) && Math.hypot(sp.p[0] - m[0], sp.p[1] - m[1]) < spacing * 0.6,
-        );
-        if (tooClose) continue;
-        if (best < 0 || Math.abs(t[j] - target) < Math.abs(t[best] - target)) best = j;
-      }
-      if (best >= 0 && Math.abs(t[best] - target) < spacing * 0.5) {
-        const [a, b] = pairs[best];
-        add([a, b], a.panel < b.panel ? 0 : 1);
+    const line = mids.reduce((acc, m) => acc + across(m), 0) / mids.length;
+    // Screws already holding both panels near this seam.
+    const holding = () =>
+      screwPoints
+        .filter((sp) => sp.panels.has(pa) && sp.panels.has(pb) && Math.abs(across(sp.p) - line) < 40)
+        .map((sp) => along(sp.p))
+        .sort((x, y) => x - y);
+    // Seam ends at the wall edge are held by the frame (or single mounts), so gaps run end to end.
+    const marks = [t0, ...holding(), t1].sort((x, y) => x - y);
+    for (let g = 0; g + 1 < marks.length; g++) {
+      const gap = marks[g + 1] - marks[g];
+      const n = Math.floor(gap / spacing - 0.25);
+      for (let i = 1; i <= n; i++) {
+        const target = marks[g] + (gap * i) / (n + 1);
+        let best = -1;
+        for (let j = 0; j < pairs.length; j++) {
+          if (!pairs[j].every(free)) continue;
+          if (best < 0 || Math.abs(t[j] - target) < Math.abs(t[best] - target)) best = j;
+        }
+        if (best >= 0 && Math.abs(t[best] - target) < spacing * 0.4) {
+          const [a, b] = pairs[best];
+          add([a, b], a.panel < b.panel ? 0 : 1);
+        }
       }
     }
   }
@@ -172,7 +184,7 @@ export function placeConnectors(
     const own = usable.filter((c) => c.panel === p.id);
     const hasNear = (pt: Vec2, r: number) => screwPoints.some((sp) => sp.panels.has(p.id) && Math.hypot(sp.p[0] - pt[0], sp.p[1] - pt[1]) < r);
     for (const tg of targets) {
-      if (hasNear(tg, spacing * 0.9)) continue;
+      if (hasNear(tg, spacing * 1.1)) continue;
       let best: LayoutCell | null = null;
       for (const c of own) if (free(c) && (!best || Math.hypot(c.x - tg[0], c.y - tg[1]) < Math.hypot(best.x - tg[0], best.y - tg[1]))) best = c;
       if (best) add([best], 0);
