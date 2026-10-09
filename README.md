@@ -22,6 +22,8 @@
 - **Библиотека аксессуаров:** крючок, штырь, держатель плоскогубцев, полка, коробка, рейка для отвёрток, кольцо, табличка, заглушка. У каждого свои параметры. Вставки (inserts) генерируются автоматически, а редактор проверяет, что они попадают в свободные ячейки.
 - **Свои модели:** загрузите STL, чтобы увидеть его на стене при планировании.
 - **Тестовый набор:** маленькая панель, части рамки с соединениями, вставка и крючок с вашими настройками, чтобы проверить посадку перед печатью всей стены.
+- **Допуски:** поправки для отверстий ячеек и для вставок, чтобы подстроить посадку под свой принтер по результату тестовой печати.
+- **Маркировка и сборка:** номер детали гравируется на донышке ячейки под саморез (панели) и зеркально на обратной стороне (рамка). Пошаговая инструкция по сборке в HTML: порядок панелей, затем нижние и верхние части рамки, затем аксессуары. Каждый шаг со схемой.
 - **Экспорт:** ZIP со STL или один 3MF, схема сборки в SVG, оценка расхода пластика.
 - **Проект:** сохранение в файл, ссылка на проект, автосохранение в браузере, отмена и повтор.
 - Интерфейс на русском и английском, светлая и тёмная тема, адаптивная вёрстка.
@@ -57,6 +59,8 @@ Design the whole wall instead of one panel at a time. Set the shape, size, frame
 - **Accessory library:** hook, peg, plier holder, shelf, bin, screwdriver rack, ring holder, label plate and cap, each with its own parameters. The inserts are generated automatically, and the editor checks that they land on free cells.
 - **Your own STLs:** upload a model to see it on the wall while you plan.
 - **Test kit:** a small panel, jointed frame parts, an insert and a hook with your settings, to check the fit before printing the whole wall.
+- **Tolerances:** separate adjustments for the cell holes and for the inserts, to tune the fit to your printer after the test print.
+- **Labels and assembly:** part labels are engraved on a screw-cell floor (panels) and mirrored on the back (frame). A step-by-step HTML assembly guide covers panel order, then the lower and upper frame parts, then accessories, with a diagram for each step.
 - **Export:** a ZIP of STLs or one 3MF, an SVG assembly sheet and a filament estimate.
 - **Projects:** save to a file, share as a link, autosave in the browser, undo and redo.
 - English and Russian UI, light and dark themes, responsive layout.

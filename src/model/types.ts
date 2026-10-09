@@ -63,6 +63,12 @@ export interface PrinterSettings {
   bedW: number;
   bedH: number;
   margin: number;
+  /** Added to the hole width (mm). Positive = looser inserts. */
+  holeTolerance: number;
+  /** Added to the generated insert body width (mm). Positive = tighter fit. */
+  insertTolerance: number;
+  /** Engrave piece labels (screw-cell floors of panels, back of frame parts). */
+  engrave: boolean;
 }
 
 export interface CellRef {

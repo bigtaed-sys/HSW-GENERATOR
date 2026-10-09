@@ -2,6 +2,7 @@ import type { Cutout, Project } from '../model/types';
 import { DEPTH, HOLE_PROFILE } from './constants';
 import { Scope, type CrossSection, type Kernel, type Manifold } from './kernel';
 import { hexagon } from './lattice';
+import { textOutline, textWidth } from './text';
 import { buildFrameStyle } from './frames/build';
 import { frameStyleParams } from './frames/styles';
 import { roundedRect, type LayoutInternal } from './layout';
@@ -12,10 +13,10 @@ const EPS = 0.02;
 const LAP_Z = DEPTH / 2;
 
 /** One HSW hole as a cutting tool, built from convex frusta of the hole profile. */
-export function holeTool(K: Kernel, s: Scope): Manifold {
+export function holeTool(K: Kernel, s: Scope, tol = 0): Manifold {
   const { Manifold, CrossSection: CS } = K;
   const prof = HOLE_PROFILE;
-  const slab = (z: number, w: number) => s.t(s.t(s.t(new CS([hexagon(w)])).extrude(0.001)).translate([0, 0, z]));
+  const slab = (z: number, w: number) => s.t(s.t(s.t(new CS([hexagon(w + tol)])).extrude(0.001)).translate([0, 0, z]));
   // Convex pieces: [back chamfer], [straight], [front widening + recess].
   const a = s.t(Manifold.hull([slab(prof[0][0] - EPS * 10, prof[0][1] + 0.04), slab(prof[1][0], prof[1][1])]));
   const b = s.t(Manifold.hull([slab(prof[1][0], prof[1][1]), slab(prof[2][0], prof[2][1])]));
@@ -89,6 +90,7 @@ export function toMesh(id: string, m: Manifold): MeshData {
 
 /** Builds one piece (panel or frame segment) in wall coordinates. */
 export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<string, Manifold>): Manifold | null {
+  const project = L.project;
   const { Manifold } = K;
   const region = L.regions.get(id);
   if (!region) return null;
@@ -112,6 +114,18 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
       const [x0, y0, x1, y1] = piece.bbox;
       const near = L.cuts.filter((c) => c.x + c.w / 2 + c.chamfer > x0 && c.x - c.w / 2 - c.chamfer < x1 && c.y + c.h / 2 + c.chamfer > y0 && c.y - c.h / 2 - c.chamfer < y1);
       for (const t of cutoutTools(K, s, near, DEPTH)) body = s.t(body.subtract(t));
+      if (project.printer.engrave) {
+        // Label on the floor of the top-left screw cell, above the countersink.
+        const mounts = cells.filter((c) => c.kind === 'mount').sort((a, b) => b.y - a.y || a.x - b.x);
+        if (mounts.length) {
+          const c = mounts[0];
+          const h = Math.min(3.6, (12 * 6) / Math.max(1, piece.label.length * 6 - 2));
+          const text = textOutline(K, s, piece.label, h, 0.6);
+          const depth = Math.min(0.5, project.mount.floor - 1);
+          const tool = s.t(s.t(text.extrude(depth + 1)).translate([c.x, c.y + 6.6, project.mount.floor - depth]));
+          body = s.t(body.subtract(tool));
+        }
+      }
       return body.asOriginal();
     }
     // Frame piece
@@ -121,12 +135,26 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
     const H = L.frontZ + 4;
     const prism = (cs: CrossSection, z0: number, z1: number) => s.t(s.t(cs.extrude(z1 - z0)).translate([0, 0, z0]));
     const clips = [prism(parts.core, -2, H)];
-    // Lap joints: the piece's start overlaps the previous piece from the front, its end sits underneath the next one.
-    if (parts.high) clips.push(prism(parts.high, LAP_Z, H));
-    if (parts.low) clips.push(prism(parts.low, -2, LAP_Z));
+    // Lap joints: half-height ends that lie on top of or underneath the neighbouring parts.
+    for (const h of parts.high) clips.push(prism(h, LAP_Z, H));
+    for (const l of parts.low) clips.push(prism(l, -2, LAP_Z));
     const clip = s.t(Manifold.union(clips));
     let body = s.t(s.t(outer.intersect(clip)).subtract(inner));
     for (const t of cutoutTools(K, s, L.cuts, L.frontZ)) body = s.t(body.subtract(t));
+    if (project.printer.engrave) {
+      // Mirrored label on the back face, readable when the part is turned over.
+      const h = Math.max(3, Math.min(7, project.frame.width * 0.45));
+      const w = textWidth(piece.label, h);
+      const a = (piece.anchorAngle * Math.PI) / 180;
+      let [x, y] = piece.anchor;
+      const clear = w / 2 + project.mount.headDiameter / 2 + 2;
+      if (piece.screws.some(([sx, sy]) => Math.hypot(sx - x, sy - y) < clear)) {
+        x += Math.cos(a) * clear;
+        y += Math.sin(a) * clear;
+      }
+      const text = textOutline(K, s, piece.label, h, Math.max(0.8, h * 0.14), { mirror: true, angle: piece.anchorAngle });
+      body = s.t(body.subtract(s.t(s.t(text.extrude(1.6)).translate([x, y, -1]))));
+    }
     if (piece.screws.length) {
       const st = cache.get('screw')!;
       body = s.t(body.subtract(s.t(Manifold.compose(piece.screws.map(([x, y]) => s.t(st.translate([x, y, 0])))))));
@@ -140,7 +168,7 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
 /** Shared tools for a layout; caller frees the scope. */
 export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: Scope) {
   const cache = new Map<string, Manifold>();
-  const hole = holeTool(K, s);
+  const hole = holeTool(K, s, project.printer.holeTolerance);
   cache.set('hole', hole);
   cache.set('mount', mountTool(K, s, project, hole));
   if (L.hasFrame) {
