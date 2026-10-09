@@ -128,8 +128,12 @@ function StatusBar() {
   const t = useT();
   const layout = useGeo((s) => s.layout);
   const busy = useGeo((s) => s.layoutBusy);
+  const meshes = useGeo((s) => s.meshes);
   const st = layout?.stats;
-  const grams = (st?.volume ?? 0) * 1.24;
+  // Exact once every piece is built (3D view), otherwise the layout's estimate.
+  const built = layout && layout.pieces.length > 0 && layout.pieces.every((p) => meshes[p.id]);
+  const volume = built ? layout.pieces.reduce((a, p) => a + meshes[p.id].volume, 0) : (st?.volume ?? 0);
+  const grams = volume * 1.24;
   return (
     <footer className="statusbar">
       {st && (
@@ -154,7 +158,7 @@ function StatusBar() {
             </span>
           )}
           <span className="hide-sm">
-            {t('statFilament')} <b>≈{grams >= 1000 ? `${(grams / 1000).toFixed(2)} kg` : `${grams.toFixed(0)} g`}</b>
+            <span title={t(built ? 'filamentExact' : 'filamentEstimate')}>{t('statFilament')}</span> <b>{built ? '' : '≈'}{grams >= 1000 ? `${(grams / 1000).toFixed(2)} kg` : `${grams.toFixed(0)} g`}</b>
           </span>
         </>
       )}

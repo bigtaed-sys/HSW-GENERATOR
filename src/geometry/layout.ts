@@ -462,7 +462,8 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       const own = cells.filter((c) => c.panel === p.id);
       p.holes = own.filter((c) => c.kind !== 'solid').length;
       const area = p.polys.reduce((a, poly) => a + signedArea(poly), 0);
-      let v = area * DEPTH;
+      // An integrated frame stands out over the cells.
+      let v = area * DEPTH + (frameBands.get(p.id)?.area() ?? 0) * (frontZ - DEPTH);
       for (const c of own) {
         if (c.kind === 'hole' || c.kind === 'mount' || c.kind === 'conn') v -= HOLE_VOLUME;
         else if (c.kind === 'partial' && c.poly)
@@ -476,10 +477,18 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   // ---- Decorative pattern on the frame front -----------------------------
   if (hasFrame && frame.style === 'lit') {
+    const innerLedge = lip > 0 ? 1.5 : 0;
     // Backlit cells: move each frame screw to the middle of a nearby tile of the pattern,
     // clear of a lane along the outer wall where the LED strip runs.
     const boss = mount.headDiameter / 2 + 1.6;
-    const lane = polysOf(s.t(outer.offset(-(frameStyleParams(frame).wall + LED_LANE + boss), 'Round', 2, 96)));
+    const sp = frameStyleParams(frame);
+    const onInner = sp.side === 1;
+    // Screw centres must stay inside `lane` (strip on the outer wall) or outside it (strip on the inner wall).
+    const lane = polysOf(
+      onInner
+        ? s.t(inner.offset(sp.wall + innerLedge + LED_LANE + boss, 'Round', 2, 96))
+        : s.t(outer.offset(-(sp.wall + LED_LANE + boss), 'Round', 2, 96)),
+    );
     for (const p of pieces) {
       const own = p.kind === 'frame' ? p.polys : p.framePolys;
       if (!own) continue;
@@ -490,7 +499,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
           for (let dr = -2; dr <= 2; dr++) {
             const q = cellCenter(at.c + dc, at.r + dr, grid);
             const ok =
-              pointInPolys(q[0], q[1], lane) &&
+              pointInPolys(q[0], q[1], lane) !== onInner &&
               [[0, 0], [boss, 0], [-boss, 0], [0, boss], [0, -boss]].every(([dx, dy]) => pointInPolys(q[0] + dx, q[1] + dy, own));
             if (ok && (!best || Math.hypot(q[0] - x, q[1] - y) < Math.hypot(best[0] - x, best[1] - y))) best = q;
           }
@@ -515,7 +524,19 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     }
   }
 
-  const led = hasFrame && !inner.isEmpty() ? ledLayout(s, project, outer, frontZ, pattern) : undefined;
+  if (pattern?.hollow) {
+    // Backlit cells: take the hollow and the grooves out of the estimate.
+    const { top, floor } = litLevels(frame, frontZ);
+    for (const p of pieces) {
+      const reg = regions.get(p.id);
+      if (!reg) continue;
+      const gone = (s.t(reg.intersect(pattern.hollow)).area() * top + s.t(reg.intersect(pattern.cut)).area() * (frontZ - floor)) / 1000;
+      p.volume = Math.max(0, p.volume - gone);
+      volume -= gone;
+    }
+  }
+
+  const led = hasFrame && !inner.isEmpty() ? ledLayout(s, project, outer, inner, lip > 0 ? 1.5 : 0, frontZ, pattern) : undefined;
 
   const ob = outer.bounds();
   const layout: Layout = {
@@ -1289,17 +1310,29 @@ function flatMesh(s: Scope, cs: CrossSection, z: number) {
 const packLeds = (leds: { p: Vec2; n: Vec2 }[]) => Float32Array.from(leds.flatMap((l) => [l.p[0], l.p[1], l.n[0], l.n[1]]));
 
 /** Where the LED strip lies, for the lighting preview and the strip length. */
-function ledLayout(s: Scope, project: Project, outer: CrossSection, frontZ: number, pattern: FramePattern | null): LayoutLed | undefined {
+function ledLayout(
+  s: Scope,
+  project: Project,
+  outer: CrossSection,
+  inner: CrossSection,
+  innerLedge: number,
+  frontZ: number,
+  pattern: FramePattern | null,
+): LayoutLed | undefined {
   const { frame } = project;
   const low = (p: Vec2[]) => p.reduce((a, q) => (q[1] < a[1] ? q : a), p[0]);
   if (frame.style === 'lit' && pattern?.hollow) {
     const sp = frameStyleParams(frame);
     const { top, floor } = litLevels(frame, frontZ);
-    const path = mainContour(polysOf(s.t(outer.offset(-(sp.wall + 0.6), 'Round', 2, 96))));
+    // On the outer wall the LEDs shine inwards, on the inner wall (by the cells) outwards.
+    const onInner = sp.side === 1;
+    const path = mainContour(
+      polysOf(onInner ? s.t(inner.offset(sp.wall + innerLedge + 0.6, 'Round', 2, 96)) : s.t(outer.offset(-(sp.wall + 0.6), 'Round', 2, 96))),
+    );
     if (!path) return undefined;
     const z0 = 0.6,
       z1 = top - 0.4;
-    const leds = along(path, LED_PITCH);
+    const leds = along(path, LED_PITCH).map((l) => (onInner ? { p: l.p, n: [-l.n[0], -l.n[1]] as Vec2 } : l));
     // LEDs sit mid-height on the strip; the plate underside is `rise` above them.
     const rise = Math.max(1, top - (z0 + z1) / 2);
     const grooves = flatMesh(s, pattern.cut, floor + 0.03);
