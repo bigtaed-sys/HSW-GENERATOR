@@ -274,7 +274,21 @@ function GridTab() {
           {mount.mode === 'connectors' ? t('connectorsHint') : t('cellsHint')}
         </p>
         {mount.mode === 'connectors' ? (
-          <Slider label={t('connectorSpacing')} value={mount.spacing} min={60} max={250} step={5} onChange={bind((p, v) => (p.mount.spacing = v))} />
+          <>
+            <Toggle label={t('connJunctions')} checked={mount.junctions} onChange={(v) => update((p) => void (p.mount.junctions = v))} />
+            <Toggle label={t('connSeams')} checked={mount.seams} onChange={(v) => update((p) => void (p.mount.seams = v))} />
+            {mount.seams && (
+              <Slider label={t('connectorSpacing')} value={mount.spacing} min={60} max={400} step={5} onChange={bind((p, v) => (p.mount.spacing = v))} />
+            )}
+            <Toggle label={t('connEdges')} checked={mount.edges} onChange={(v) => update((p) => void (p.mount.edges = v))} />
+            {mount.edges && (
+              <Slider label={t('connEdgeSpacing')} value={mount.edgeSpacing} min={80} max={500} step={10} onChange={bind((p, v) => (p.mount.edgeSpacing = v))} />
+            )}
+            <Slider label={t('connMinPerPanel')} value={mount.minPerPanel} min={0} max={4} unit="" onChange={bind((p, v) => (p.mount.minPerPanel = v))} />
+            <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>
+              {t('connManualHint')}
+            </p>
+          </>
         ) : (
           <>
             <Slider label={t('mountsPerPanel')} value={mount.perPanel} min={0} max={6} unit="" onChange={bind((p, v) => (p.mount.perPanel = v))} />

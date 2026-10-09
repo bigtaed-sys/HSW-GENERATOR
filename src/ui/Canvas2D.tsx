@@ -141,7 +141,12 @@ export function Canvas2D() {
           if (cur === 'solid') delete p.cells[k];
           else p.cells[k] = 'solid';
         } else if (tool === 'mount') {
-          if (kind === 'mount') {
+          if (cur === 'open') delete p.cells[k];
+          else if (kind === 'conn') {
+            // Connector cell: forced singles are removed, anything else is excluded from placement.
+            if (cur === 'mount') delete p.cells[k];
+            else p.cells[k] = 'open';
+          } else if (kind === 'mount') {
             if (cur === 'mount') delete p.cells[k];
             else p.cells[k] = 'open';
           } else if (kind === 'hole') p.cells[k] = 'mount';

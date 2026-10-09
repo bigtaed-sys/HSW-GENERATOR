@@ -45,8 +45,17 @@ export type MountMode = 'connectors' | 'cells';
 export interface MountSettings {
   /** connectors: snap-in connector groups across panel seams, one screw each; cells: screw floors inside cells. */
   mode: MountMode;
+  /** 4-/3-cell connectors where panels meet. */
+  junctions: boolean;
+  /** 2-cell connectors along seams. */
+  seams: boolean;
   /** Target distance between connectors along a seam (mm). */
   spacing: number;
+  /** Single mounts along the outer edge. */
+  edges: boolean;
+  edgeSpacing: number;
+  /** Minimum connectors holding each panel. */
+  minPerPanel: number;
   perPanel: number; // automatically placed screw cells per panel (cells mode)
   screwDiameter: number;
   headDiameter: number;

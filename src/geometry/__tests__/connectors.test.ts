@@ -22,7 +22,7 @@ describe('connectors', () => {
     const panels = pieces.filter((x) => x.kind === 'panel');
     for (const pn of panels) {
       const screws = connectors.filter((k) => k.panels.includes(pn.id)).length;
-      expect(screws).toBeGreaterThanOrEqual(2);
+      expect(screws).toBeGreaterThanOrEqual(p.mount.minPerPanel);
     }
     // Every pair of panels sharing a seam is joined by at least one connector.
     const kind = new Map(cells.map((c) => [cellKey(c.c, c.r), c]));
@@ -36,6 +36,21 @@ describe('connectors', () => {
         expect(seen.has(key)).toBe(false);
         seen.add(key);
       }
+    // Edge singles come in mirrored sets.
+    const singles = connectors.filter((k) => k.cells.length === 1);
+    for (const k of singles) expect(singles.some((q) => Math.hypot(q.screw[0] + k.screw[0], q.screw[1] - k.screw[1]) < 1)).toBe(true);
+    L.scope.free();
+  });
+
+  it('respects the placement switches', () => {
+    const p = defaultProject();
+    p.mount.junctions = false;
+    p.mount.edges = false;
+    p.mount.seams = true;
+    p.mount.minPerPanel = 0;
+    const L = computeLayout(K, p);
+    expect(L.layout.connectors.length).toBeGreaterThan(0);
+    expect(L.layout.connectors.every((k) => k.cells.length === 2)).toBe(true);
     L.scope.free();
   });
 

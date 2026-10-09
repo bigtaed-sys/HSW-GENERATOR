@@ -264,7 +264,14 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   // ---- Connectors ----------------------------------------------------------
   const connectors =
     mount.mode === 'connectors'
-      ? placeConnectors(cells, pieces.filter((p) => p.kind === 'panel'), project.cells, Math.max(50, mount.spacing))
+      ? placeConnectors(cells, pieces.filter((p) => p.kind === 'panel'), project.cells, {
+          junctions: mount.junctions,
+          seams: mount.seams,
+          seamSpacing: mount.spacing,
+          edges: mount.edges,
+          edgeSpacing: mount.edgeSpacing,
+          minPerPanel: mount.minPerPanel,
+        })
       : [];
   for (const k of connectors) Object.assign(k.params, { screw: mount.screwDiameter, head: mount.headDiameter });
   if (connectors.length) {
