@@ -128,10 +128,12 @@ export const FRAME_STYLES: FrameStyleDef[] = [
       param('skin', 'Дно канавки', 'Groove floor', 0.2, 1.6, 0.6, 0.04),
       param('plate', 'Лицевая пластина', 'Front plate', 1.5, 8, 3, 0.1),
       param('wall', 'Стенки полости', 'Hollow walls', 1.2, 8, 2.5, 0.1),
+      param('patch', 'Накладка на стык', 'Seam patch', 0.2, 2, 0.6, 0.1),
+      param('patchWidth', 'Ширина накладки', 'Patch width', 8, 30, 16, 1),
     ],
     note: {
-      ru: 'Сетка стены продолжается на рамке канавками с тонким дном. Рамка полая сзади: лента внутри подсвечивает узор через обычный, не прозрачный пластик, светлый светится лучше. Дно делайте в 2–3 слоя. Отдельные части рамки экспортируются лицом вниз; рамка заодно с панелями печатается спиной вниз, пластина над полостью идёт мостом.',
-      en: 'The wall honeycomb continues over the frame as grooves with a thin floor. The frame is hollow at the back: an LED strip inside makes the pattern glow through ordinary (not transparent) plastic; light colours work best. Make the floor 2–3 layers thick. Separate frame parts export face down; an integrated frame prints back down, with the plate bridged over the hollow.',
+      ru: 'Сетка стены продолжается на рамке канавками с тонким дном. Рамка полая сзади: лента внутри подсвечивает узор через обычный, не прозрачный пластик, светлый светится лучше. Дно делайте в 2–3 слоя. Отдельные части режутся по канавкам, так что узор идёт через стык; сзади шов закрывает тонкая накладка (J1, J2…), её вклеивают в полость под пластину. Отдельные части рамки экспортируются лицом вниз; рамка заодно с панелями печатается спиной вниз, пластина над полостью идёт мостом.',
+      en: 'The wall honeycomb continues over the frame as grooves with a thin floor. The frame is hollow at the back: an LED strip inside makes the pattern glow through ordinary (not transparent) plastic; light colours work best. Make the floor 2–3 layers thick. Separate parts are cut along the grooves, so the pattern runs across the seams; a thin patch (J1, J2…) is glued into the hollow behind each seam. Separate frame parts export face down; an integrated frame prints back down, with the plate bridged over the hollow.',
     },
   },
 ];

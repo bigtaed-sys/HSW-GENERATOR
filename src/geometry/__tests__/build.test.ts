@@ -90,6 +90,13 @@ describe('build', () => {
         vol += m.volume();
         m.delete();
       }
+      if (preset.id === 'lit-separate') {
+        // Cut along the grooves, no laps: one patch per seam.
+        const frames = L.layout.pieces.filter((x) => x.kind === 'frame').length;
+        expect(frames).toBeGreaterThan(1);
+        expect(L.plates.length).toBe(frames);
+        for (const pl of L.plates) expect(pl.decompose().length).toBe(1);
+      }
       console.log(preset.id, L.layout.pattern?.length ?? 0, 'pockets', (vol / 1000).toFixed(0), 'cm3', (performance.now() - t).toFixed(0), 'ms', L.layout.warnings);
       s.free();
       L.scope.free();
