@@ -32,6 +32,10 @@ export interface LayoutPiece {
   anchorAngle: number;
   /** Assembly stage: 0 panels, 1 frame parts that go underneath at joints, 2 frame parts on top. */
   stage: number;
+  /** Integrated frame: the frame part of an edge panel. */
+  framePolys?: Vec2[][];
+  frameAnchor?: Vec2;
+  frameAnchorAngle?: number;
 }
 
 /** A connector group: inserts in neighbouring cells, bridged on top, one screw. */

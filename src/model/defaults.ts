@@ -39,9 +39,10 @@ export function defaultProject(): Project {
   return {
     version: 1,
     name: 'My HSW wall',
-    wall: { shape: 'rect', width: 900, height: 600, cornerRadius: 24 },
+    wall: { shape: 'rect', width: 900, height: 600, cornerRadius: 24, points: [] },
     frame: {
       width: 18,
+      mode: 'separate',
       style: 'classic',
       styleParams: {},
       proud: 2,
@@ -50,9 +51,10 @@ export function defaultProject(): Project {
       screws: true,
       joint: 'lap',
       jointLength: 40,
+      led: { mode: 'none', width: 12, depth: 3, wire: true },
     },
     grid: { mode: 'whole', minEdge: 1.8, minPartial: 0.3, offsetX: 0, offsetY: 0, flipStagger: false },
-    mount: { mode: 'connectors', spacing: 150, perPanel: 4, screwDiameter: 4, headDiameter: 8, floor: 2.4 },
+    mount: { mode: 'connectors', junctions: true, seams: false, spacing: 150, edges: true, edgeSpacing: 250, minPerPanel: 1, perPanel: 4, screwDiameter: 4, headDiameter: 8, floor: 2.4 },
     cells: {},
     cutouts: [],
     printer: { preset: 'bambu-x1', bedW: 256, bedH: 256, margin: 5, holeTolerance: 0, insertTolerance: 0, engrave: true },

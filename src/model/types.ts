@@ -3,7 +3,7 @@
 
 export type Lang = 'ru' | 'en';
 
-export type WallShape = 'rect' | 'hexagon' | 'ellipse' | 'honeycomb';
+export type WallShape = 'rect' | 'hexagon' | 'ellipse' | 'honeycomb' | 'custom';
 export type CellMode = 'whole' | 'partial';
 export type CellOverride = 'solid' | 'mount' | 'open';
 
@@ -12,12 +12,18 @@ export interface WallSettings {
   width: number;
   height: number;
   cornerRadius: number;
+  /** Outline for the custom shape, in mm around the wall centre. */
+  points: [number, number][];
 }
 
 export type FrameJoint = 'none' | 'lap';
 
+export type FrameMode = 'separate' | 'integrated';
+
 export interface FrameSettings {
   width: number; // 0 = no frame
+  /** separate: printed as its own parts; integrated: each edge panel carries its share of the frame. */
+  mode: FrameMode;
   /** Frame style id from the style registry (geometry/frames/styles.ts). */
   style: string;
   /** Parameters of the selected style. Kept per style so switching back restores them. */
@@ -29,6 +35,18 @@ export interface FrameSettings {
   screws: boolean;
   joint: FrameJoint;
   jointLength: number;
+  led: LedSettings;
+}
+
+export type LedMode = 'none' | 'front' | 'halo';
+
+export interface LedSettings {
+  /** front: groove for a strip in the frame front; halo: rebate at the back outer edge for wall glow. */
+  mode: LedMode;
+  width: number;
+  depth: number;
+  /** Hole for the cable at the bottom of the frame. */
+  wire: boolean;
 }
 
 export interface GridSettings {
@@ -45,8 +63,17 @@ export type MountMode = 'connectors' | 'cells';
 export interface MountSettings {
   /** connectors: snap-in connector groups across panel seams, one screw each; cells: screw floors inside cells. */
   mode: MountMode;
+  /** 4-/3-cell connectors where panels meet. */
+  junctions: boolean;
+  /** 2-cell connectors along seams. */
+  seams: boolean;
   /** Target distance between connectors along a seam (mm). */
   spacing: number;
+  /** Single mounts along the outer edge. */
+  edges: boolean;
+  edgeSpacing: number;
+  /** Minimum connectors holding each panel. */
+  minPerPanel: number;
   perPanel: number; // automatically placed screw cells per panel (cells mode)
   screwDiameter: number;
   headDiameter: number;

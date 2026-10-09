@@ -75,6 +75,24 @@ export const FRAME_STYLES: FrameStyleDef[] = [
       param('flat', 'Плоская полка у сот', 'Flat inner shelf', 0, 60, 20, 1, '%'),
     ],
   },
+  {
+    id: 'bead',
+    name: { ru: 'Валик', en: 'Bead' },
+    icon: 'M2 17 V5 A3 3 0 0 1 8 5 V10 H17 V17 Z',
+    params: [
+      param('bead', 'Ширина валика', 'Bead width', 3, 16, 6, 0.5),
+      param('drop', 'Высота валика', 'Bead height', 0.6, 6, 2, 0.2),
+    ],
+  },
+  {
+    id: 'cove',
+    name: { ru: 'Выкружка', en: 'Cove' },
+    icon: 'M2 17 V5 Q12 5 17 12 V17 Z',
+    params: [
+      param('drop', 'Глубина', 'Depth', 1, 8, 4, 0.5),
+      param('flat', 'Плоская полка у края', 'Flat outer rim', 0, 50, 15, 1, '%'),
+    ],
+  },
 ];
 
 export const frameStyle = (id: string) => FRAME_STYLES.find((f) => f.id === id) ?? FRAME_STYLES[0];

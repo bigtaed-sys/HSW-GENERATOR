@@ -35,7 +35,8 @@ describe('layout', () => {
     // Panels + frame cover the outline exactly.
     const area = (polys: [number, number][][]) => polys.reduce((a, q) => a + signedArea(q), 0);
     const total = pieces.reduce((a, pc) => a + area(pc.polys), 0);
-    expect(total).toBeCloseTo(area(L.layout.outer), -1);
+    // Frame cuts are 0.05 mm slots, so allow a hair of missing area.
+    expect(Math.abs(total - area(L.layout.outer))).toBeLessThan(area(L.layout.outer) * 0.0005);
     L.scope.free();
   });
 

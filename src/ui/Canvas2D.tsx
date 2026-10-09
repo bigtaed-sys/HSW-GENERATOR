@@ -125,6 +125,7 @@ export function Canvas2D() {
     | { kind: 'model'; id: string; grab: Vec2; moved: boolean }
     | { kind: 'cutout'; id: string; start: Vec2; ox: number; oy: number; moved: boolean }
     | { kind: 'paint'; done: Set<string> }
+    | { kind: 'vtx'; i: number; moved: boolean }
     | null
   >(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -141,7 +142,12 @@ export function Canvas2D() {
           if (cur === 'solid') delete p.cells[k];
           else p.cells[k] = 'solid';
         } else if (tool === 'mount') {
-          if (kind === 'mount') {
+          if (cur === 'open') delete p.cells[k];
+          else if (kind === 'conn') {
+            // Connector cell: forced singles are removed, anything else is excluded from placement.
+            if (cur === 'mount') delete p.cells[k];
+            else p.cells[k] = 'open';
+          } else if (kind === 'mount') {
             if (cur === 'mount') delete p.cells[k];
             else p.cells[k] = 'open';
           } else if (kind === 'hole') p.cells[k] = 'mount';
@@ -180,6 +186,26 @@ export function Canvas2D() {
       const params = defaultParams(placing);
       update((p) => void p.accessories.push({ id, type: placing, c: cell.c, r: cell.r, params, color: PALETTE[p.accessories.length % 7] }));
       setUi({ placing: e.shiftKey ? placing : null, selection: { kind: 'accessory', id }, rightTab: 'inspector' });
+      return;
+    }
+    if (tool === 'outline' && project.wall.shape === 'custom') {
+      const hit = target?.dataset.hit ?? '';
+      if (hit.startsWith('vtx:') || hit.startsWith('mid:')) {
+        checkpoint();
+        let i = +hit.slice(4);
+        if (hit.startsWith('mid:')) {
+          // Insert a corner in the middle of the edge and drag it right away.
+          const pts = project.wall.points;
+          const a = pts[i],
+            b = pts[(i + 1) % pts.length];
+          i = i + 1;
+          update((p) => void p.wall.points.splice(i, 0, [Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2)]), { transient: true });
+        }
+        drag.current = { kind: 'vtx', i, moved: hit.startsWith('mid:') };
+        return;
+      }
+      drag.current = { kind: 'pan', x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty };
+      setPanning(true);
       return;
     }
     if (tool !== 'select') {
@@ -236,6 +262,29 @@ export function Canvas2D() {
     if (!d) return;
     if (d.kind === 'pan') {
       setView({ s: v.s, tx: d.tx + e.clientX - d.x, ty: d.ty + e.clientY - d.y });
+    } else if (d.kind === 'vtx') {
+      const pts = useStore.getState().project.wall.points;
+      const step = e.shiftKey ? 1 : 5;
+      let [nx, ny] = [Math.round(world[0] / step) * step, Math.round(world[1] / step) * step];
+      // Line up with the neighbouring corners when close.
+      const tol = 8 / v.s;
+      for (const q of [pts[(d.i - 1 + pts.length) % pts.length], pts[(d.i + 1) % pts.length]]) {
+        if (Math.abs(world[0] - q[0]) < tol) nx = q[0];
+        if (Math.abs(world[1] - q[1]) < tol) ny = q[1];
+      }
+      if (pts[d.i][0] !== nx || pts[d.i][1] !== ny) {
+        d.moved = true;
+        update(
+          (p) => {
+            p.wall.points[d.i] = [nx, ny];
+            const xs = p.wall.points.map((q) => q[0]),
+              ys = p.wall.points.map((q) => q[1]);
+            p.wall.width = Math.max(...xs) - Math.min(...xs);
+            p.wall.height = Math.max(...ys) - Math.min(...ys);
+          },
+          { transient: true },
+        );
+      }
     } else if (d.kind === 'paint') {
       const k = cellKey(cell.c, cell.r);
       if (!d.done.has(k)) {
@@ -285,7 +334,7 @@ export function Canvas2D() {
     setPanning(false);
     if (!d) return;
     // Commit the gesture as one undo step.
-    if (d.kind === 'paint' || ((d.kind === 'acc' || d.kind === 'model' || d.kind === 'cutout') && d.moved)) update(() => {});
+    if (d.kind === 'paint' || ((d.kind === 'acc' || d.kind === 'model' || d.kind === 'cutout' || d.kind === 'vtx') && d.moved)) update(() => {});
   };
 
   const onWheel = useCallback(
@@ -339,6 +388,12 @@ export function Canvas2D() {
       onPointerCancel={onPointerUp}
       onPointerLeave={() => setHover(null)}
       onContextMenu={(e) => e.preventDefault()}
+      onDoubleClick={(e) => {
+        const hit = ((e.target as Element).closest('[data-hit]') as HTMLElement | null)?.dataset.hit ?? '';
+        if (!hit.startsWith('vtx:') || project.wall.points.length <= 3) return;
+        const i = +hit.slice(4);
+        update((p) => void p.wall.points.splice(i, 1));
+      }}
       data-testid="canvas-2d"
     >
       <defs>
@@ -357,6 +412,15 @@ export function Canvas2D() {
           {panelPieces.map((p) => (
             <path key={p.id} d={pathOf(p.polys)} fill={colors.panel} fillRule="evenodd" />
           ))}
+          {/* Integrated frame parts of edge panels */}
+          {panelPieces
+            .filter((p) => p.framePolys)
+            .map((p) => (
+              <g key={`fb-${p.id}`}>
+                <path d={pathOf(p.framePolys!)} fill={mix(colors.panel, '#ffffff', panelDark ? 0.1 : 0.06)} fillRule="evenodd" />
+                <path d={pathOf(p.framePolys!)} fill="url(#frameSheen)" fillRule="evenodd" />
+              </g>
+            ))}
           {/* Frame */}
           {framePieces.map((p) => (
             <g key={p.id}>
@@ -494,8 +558,38 @@ export function Canvas2D() {
                 </g>
               );
             })}
+          {/* Outline editor */}
+          {tool === 'outline' && project.wall.shape === 'custom' && project.wall.points.length >= 3 && (
+            <g>
+              <path d={pathOf([project.wall.points])} fill="none" stroke="var(--accent)" strokeWidth={1.5 * sw} strokeDasharray={`${5 * sw} ${3 * sw}`} />
+              {project.wall.points.map((a, i) => {
+                const b = project.wall.points[(i + 1) % project.wall.points.length];
+                const mx = (a[0] + b[0]) / 2,
+                  my = (a[1] + b[1]) / 2;
+                return (
+                  <g key={`m${i}`} data-hit={`mid:${i}`} style={{ cursor: 'copy' }}>
+                    <circle cx={mx} cy={my} r={6 * sw} fill="var(--surface)" stroke="var(--accent)" strokeWidth={1.2 * sw} />
+                    <path d={`M${mx - 3 * sw},${my}H${mx + 3 * sw}M${mx},${my - 3 * sw}V${my + 3 * sw}`} stroke="var(--accent)" strokeWidth={1.2 * sw} />
+                  </g>
+                );
+              })}
+              {project.wall.points.map(([x, y], i) => (
+                <circle
+                  key={`v${i}`}
+                  data-hit={`vtx:${i}`}
+                  cx={x}
+                  cy={y}
+                  r={7 * sw}
+                  fill="var(--accent)"
+                  stroke="#fff"
+                  strokeWidth={2 * sw}
+                  style={{ cursor: 'move' }}
+                />
+              ))}
+            </g>
+          )}
           {/* Hover + ghost */}
-          {hover && (placing || tool !== 'select') && (
+          {hover && (placing || (tool !== 'select' && tool !== 'outline')) && (
             <path
               d={hexPath(HOLE_FRONT + 1.2, ...cellCenter(hover.c, hover.r, project.grid))}
               fill="var(--accent)"

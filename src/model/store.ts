@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { defaultProject } from './defaults';
 import type { Lang, Project } from './types';
 
-export type Tool = 'select' | 'solid' | 'mount' | 'reset';
+export type Tool = 'select' | 'solid' | 'mount' | 'reset' | 'outline';
 export type ViewMode = '2d' | '3d';
 export type Theme = 'system' | 'light' | 'dark';
 export type Selection = { kind: 'accessory' | 'cutout' | 'model'; id: string } | null;
@@ -62,7 +62,7 @@ export function migrate(p: Partial<Project>): Project {
     ...d,
     ...p,
     wall: { ...d.wall, ...p.wall },
-    frame: { ...d.frame, ...p.frame },
+    frame: { ...d.frame, ...p.frame, led: { ...d.frame.led, ...p.frame?.led } },
     grid: { ...d.grid, ...p.grid },
     mount: { ...d.mount, ...p.mount },
     printer: { ...d.printer, ...p.printer },

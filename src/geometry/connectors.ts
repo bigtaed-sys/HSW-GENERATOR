@@ -42,12 +42,26 @@ export function connectorOffsets(p: Record<string, number>): Vec2[] {
   return Array.from({ length: p.n ?? 1 }, (_, i) => [p[`x${i}`] ?? 0, p[`y${i}`] ?? 0] as Vec2);
 }
 
+export interface ConnectorOptions {
+  /** 4- or 3-cell connectors where three or more panels meet. */
+  junctions: boolean;
+  /** 2-cell connectors along seams, where screws are further apart than `seamSpacing`. */
+  seams: boolean;
+  seamSpacing: number;
+  /** Single mounts along the outer edge, symmetric about the wall centre. */
+  edges: boolean;
+  edgeSpacing: number;
+  /** Single mounts added to any panel held by fewer connectors than this. */
+  minPerPanel: number;
+}
+
 export function placeConnectors(
   cells: LayoutCell[],
   panels: LayoutPiece[],
   overrides: Record<string, string>,
-  spacing: number,
+  opt: ConnectorOptions,
 ): LayoutConnector[] {
+  const spacing = Math.max(50, opt.seamSpacing);
   const usable = cells.filter((c) => c.kind === 'hole' && c.panel && overrides[cellKey(c.c, c.r)] !== 'open');
   const byKey = new Map(usable.map((c) => [cellKey(c.c, c.r), c]));
   const neighbours = (a: LayoutCell) => {
@@ -112,11 +126,11 @@ export function placeConnectors(
   const junctionCands = [...quads, ...tris]
     .filter((g) => panelCount(g) >= 3)
     .sort((g, h) => panelCount(h) - panelCount(g) || h.length - g.length);
-  for (const g of junctionCands) {
+  for (const g of opt.junctions ? junctionCands : []) {
     if (!g.every(free)) continue;
     const cx = g.reduce((a, c) => a + c.x, 0) / g.length,
       cy = g.reduce((a, c) => a + c.y, 0) / g.length;
-    if (screwPoints.some((sp) => Math.hypot(sp.p[0] - cx, sp.p[1] - cy) < spacing * 0.5)) continue;
+    if (screwPoints.some((sp) => Math.hypot(sp.p[0] - cx, sp.p[1] - cy) < 45)) continue;
     add(g, centroidIndex(g));
   }
 
@@ -129,7 +143,7 @@ export function placeConnectors(
       const k = `${a.panel}|${b.panel}`;
       seams.set(k, [...(seams.get(k) ?? []), [a, b]]);
     }
-  for (const [k, pairs] of seams) {
+  for (const [k, pairs] of opt.seams ? seams : new Map<string, LayoutCell[][]>()) {
     // Panels that only touch at a corner are tied by the junction group there.
     if (pairs.length < 3) continue;
     const [pa, pb] = k.split('|');
@@ -169,35 +183,69 @@ export function placeConnectors(
     }
   }
 
-  // 3. Single mounts wherever a panel area is still far from any screw.
-  for (const p of panels) {
-    const [x0, y0, x1, y1] = p.bbox;
-    const ix = (x1 - x0) * 0.22,
-      iy = (y1 - y0) * 0.22;
-    const targets: Vec2[] = [
-      [(x0 + x1) / 2, (y0 + y1) / 2],
-      [x0 + ix, y1 - iy],
-      [x1 - ix, y1 - iy],
-      [x0 + ix, y0 + iy],
-      [x1 - ix, y0 + iy],
-    ];
-    const own = usable.filter((c) => c.panel === p.id);
-    const hasNear = (pt: Vec2, r: number) => screwPoints.some((sp) => sp.panels.has(p.id) && Math.hypot(sp.p[0] - pt[0], sp.p[1] - pt[1]) < r);
-    for (const tg of targets) {
-      if (hasNear(tg, spacing * 1.1)) continue;
-      let best: LayoutCell | null = null;
-      for (const c of own) if (free(c) && (!best || Math.hypot(c.x - tg[0], c.y - tg[1]) < Math.hypot(best.x - tg[0], best.y - tg[1]))) best = c;
-      if (best) add([best], 0);
+  const nearestFree = (pt: Vec2, maxDist: number, pool = usable) => {
+    let best: LayoutCell | null = null;
+    let bd = Infinity;
+    for (const c of pool) {
+      if (!free(c)) continue;
+      // Ties go to the cell closer to the wall centre line, which keeps mirrored picks mirrored.
+      const d = Math.hypot(c.x - pt[0], c.y - pt[1]) + 1e-6 * (Math.abs(c.x) + Math.abs(c.y));
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
     }
-    // Every panel gets at least two screws.
-    const count = () => screwPoints.filter((sp) => sp.panels.has(p.id)).length;
-    while (count() < 2) {
-      const far = own.filter(free).sort((a, b) => {
-        const d = (c: LayoutCell) => Math.min(...screwPoints.filter((sp) => sp.panels.has(p.id)).map((sp) => Math.hypot(sp.p[0] - c.x, sp.p[1] - c.y)), 1e9);
-        return d(b) - d(a);
-      });
-      if (!far.length) break;
-      add([far[0]], 0);
+    return best && bd <= maxDist ? best : null;
+  };
+
+  // 3. Single mounts along the outer edge, placed in mirrored sets so the result is symmetric.
+  if (opt.edges && usable.length) {
+    const xs = usable.map((c) => c.x),
+      ys = usable.map((c) => c.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const cx = (x0 + x1) / 2,
+      cy = (y0 + y1) / 2;
+    const step = Math.max(60, opt.edgeSpacing);
+    const along = (a: number, b: number) => {
+      const n = Math.max(1, Math.round((b - a) / step));
+      return Array.from({ length: n + 1 }, (_, i) => a + ((b - a) * i) / n);
+    };
+    const targets: Vec2[] = [
+      ...along(y0, y1).flatMap((y) => [[x0, y] as Vec2, [x1, y] as Vec2]),
+      ...along(x0, x1).flatMap((x) => [[x, y0] as Vec2, [x, y1] as Vec2]),
+    ];
+    const done = new Set<string>();
+    const reach = step * 0.5;
+    for (const tg of targets) {
+      const set: Vec2[] = [tg, [2 * cx - tg[0], tg[1]], [tg[0], 2 * cy - tg[1]], [2 * cx - tg[0], 2 * cy - tg[1]]];
+      const keys = set.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`);
+      if (keys.some((k) => done.has(k))) continue;
+      keys.forEach((k) => done.add(k));
+      const unique = set.filter((_, i) => keys.indexOf(keys[i]) === i);
+      const needs = unique.some((p) => !screwPoints.some((sp) => Math.hypot(sp.p[0] - p[0], sp.p[1] - p[1]) < reach));
+      if (!needs) continue;
+      for (const p of unique) {
+        if (screwPoints.some((sp) => Math.hypot(sp.p[0] - p[0], sp.p[1] - p[1]) < reach * 0.6)) continue;
+        const c = nearestFree(p, PITCH_Y * 1.5);
+        if (c) add([c], 0);
+      }
+    }
+  }
+
+  // 4. Safety net: panels held by fewer connectors than required get singles,
+  // first near the middle, then as far as possible from the existing ones.
+  for (const p of panels) {
+    const own = usable.filter((c) => c.panel === p.id);
+    for (;;) {
+      const pts = screwPoints.filter((sp) => sp.panels.has(p.id)).map((sp) => sp.p);
+      if (pts.length >= opt.minPerPanel) break;
+      const [x0, y0, x1, y1] = p.bbox;
+      const dist = (c: LayoutCell) => Math.min(...pts.map((q) => Math.hypot(q[0] - c.x, q[1] - c.y)));
+      const c = pts.length
+        ? own.filter(free).reduce<LayoutCell | null>((best, x) => (!best || dist(x) > dist(best) ? x : best), null)
+        : nearestFree([(x0 + x1) / 2, (y0 + y1) / 2], Infinity, own);
+      if (!c) break;
+      add([c], 0);
     }
   }
   return groups;
