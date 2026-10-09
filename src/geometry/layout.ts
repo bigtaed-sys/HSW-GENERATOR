@@ -1221,44 +1221,102 @@ const mainContour = (polys: Vec2[][]) =>
 
 const perimeter = (p: Vec2[]) => p.reduce((a, q, i) => a + Math.hypot(p[(i + 1) % p.length][0] - q[0], p[(i + 1) % p.length][1] - q[1]), 0);
 
-/** Distance from each 2D point (xy of a flat xyz array) to a closed polyline. */
-function distToPath(xyz: Float32Array, path: Vec2[]): Float32Array {
-  const out = new Float32Array(xyz.length / 3);
-  const n = path.length;
-  for (let i = 0; i < out.length; i++) {
-    const x = xyz[i * 3],
-      y = xyz[i * 3 + 1];
-    let best = Infinity;
-    for (let j = 0; j < n; j++) {
-      const [ax, ay] = path[j];
-      const [bx, by] = path[(j + 1) % n];
-      const dx = bx - ax,
-        dy = by - ay;
-      const l2 = dx * dx + dy * dy || 1;
-      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
-      const d = (ax + dx * u - x) ** 2 + (ay + dy * u - y) ** 2;
-      if (d < best) best = d;
-    }
-    out[i] = Math.sqrt(best);
+/** LED pitch of a common 60 LED/m strip. */
+const LED_PITCH = 1000 / 60;
+
+/** Points every `step` mm along a closed path, with the path's unit inward normal there. */
+function along(path: Vec2[], step: number): { p: Vec2; n: Vec2 }[] {
+  const out: { p: Vec2; n: Vec2 }[] = [];
+  let carry = step / 2;
+  for (let i = 0; i < path.length; i++) {
+    const a = path[i],
+      b = path[(i + 1) % path.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 1e-9) continue;
+    const t: Vec2 = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+    for (let u = carry; u < len; u += step) out.push({ p: [a[0] + t[0] * u, a[1] + t[1] * u], n: [-t[1], t[0]] });
+    carry = (carry - len) % step;
+    if (carry < 0) carry += step;
   }
   return out;
 }
+
+/**
+ * Light reaching the underside of the front plate from a strip standing on the
+ * outer wall (LEDs shining sideways into the hollow), times what gets through
+ * `thick` mm of plastic: Lambertian LEDs, inverse-square falloff, exponential
+ * attenuation in the plastic.
+ */
+function plateLight(xyz: Float32Array, leds: { p: Vec2; n: Vec2 }[], height: number, thick: number): Float32Array {
+  const out = new Float32Array(xyz.length / 3);
+  const atten = Math.exp(-thick / 1.0);
+  const cell = 60;
+  const bins = new Map<string, number[]>();
+  leds.forEach((l, i) => {
+    const k = `${Math.floor(l.p[0] / cell)},${Math.floor(l.p[1] / cell)}`;
+    (bins.get(k) ?? bins.set(k, []).get(k)!).push(i);
+  });
+  for (let i = 0; i < out.length; i++) {
+    const x = xyz[i * 3],
+      y = xyz[i * 3 + 1];
+    const cx = Math.floor(x / cell),
+      cy = Math.floor(y / cell);
+    let e = 0;
+    for (let dx = -2; dx <= 2; dx++)
+      for (let dy = -2; dy <= 2; dy++)
+        for (const j of bins.get(`${cx + dx},${cy + dy}`) ?? []) {
+          const l = leds[j];
+          const vx = x - l.p[0],
+            vy = y - l.p[1];
+          const r2 = vx * vx + vy * vy + height * height;
+          const cos = (vx * l.n[0] + vy * l.n[1]) / Math.sqrt(r2);
+          // The plate sees the LED at a grazing angle: cos of incidence = height / r.
+          if (cos > 0) e += (cos * (height / Math.sqrt(r2))) / r2;
+        }
+    out[i] = e * atten;
+  }
+  return out;
+}
+
+function flatMesh(s: Scope, cs: CrossSection, z: number) {
+  const mesh = s.t(s.t(cs.extrude(0.001)).translate([0, 0, z])).getMesh();
+  const np = mesh.numProp;
+  const positions = new Float32Array((mesh.vertProperties.length / np) * 3);
+  for (let i = 0; i < positions.length / 3; i++) for (let k = 0; k < 3; k++) positions[i * 3 + k] = mesh.vertProperties[i * np + k];
+  return { positions, indices: new Uint32Array(mesh.triVerts) };
+}
+
+const packLeds = (leds: { p: Vec2; n: Vec2 }[]) => Float32Array.from(leds.flatMap((l) => [l.p[0], l.p[1], l.n[0], l.n[1]]));
 
 /** Where the LED strip lies, for the lighting preview and the strip length. */
 function ledLayout(s: Scope, project: Project, outer: CrossSection, frontZ: number, pattern: FramePattern | null): LayoutLed | undefined {
   const { frame } = project;
   const low = (p: Vec2[]) => p.reduce((a, q) => (q[1] < a[1] ? q : a), p[0]);
   if (frame.style === 'lit' && pattern?.hollow) {
+    const sp = frameStyleParams(frame);
     const { top, floor } = litLevels(frame, frontZ);
-    const path = mainContour(polysOf(s.t(outer.offset(-(frameStyleParams(frame).wall + 0.6), 'Round', 2, 96))));
+    const path = mainContour(polysOf(s.t(outer.offset(-(sp.wall + 0.6), 'Round', 2, 96))));
     if (!path) return undefined;
-    const m = s.t(s.t(pattern.cut.extrude(0.01)).translate([0, 0, floor + 0.02]));
-    const mesh = m.getMesh();
-    const np = mesh.numProp;
-    const positions = new Float32Array((mesh.vertProperties.length / np) * 3);
-    for (let i = 0; i < positions.length / 3; i++) for (let k = 0; k < 3; k++) positions[i * 3 + k] = mesh.vertProperties[i * np + k];
-    const glow = { positions, indices: new Uint32Array(mesh.triVerts), dist: distToPath(positions, path) };
-    return { kind: 'inside', path, z0: 0.6, z1: top - 0.4, width: top - 1, length: perimeter(path), wire: low(polysOf(outer)[0] ?? path), glow };
+    const z0 = 0.6,
+      z1 = top - 0.4;
+    const leds = along(path, LED_PITCH);
+    // LEDs sit mid-height on the strip; the plate underside is `rise` above them.
+    const rise = Math.max(1, top - (z0 + z1) / 2);
+    const grooves = flatMesh(s, pattern.cut, floor + 0.03);
+    const tiles = flatMesh(s, s.t(s.t(pattern.hollow.offset(-1.6, 'Round', 2, 48)).subtract(pattern.cut)), frontZ + 0.03);
+    const g = { ...grooves, light: plateLight(grooves.positions, leds, rise, sp.skin) };
+    const tl = { ...tiles, light: plateLight(tiles.positions, leds, rise, frontZ - top) };
+    // Light bouncing around the white hollow evens things out a little.
+    let max = 0;
+    for (const v of g.light) max = Math.max(max, v);
+    const scatter = 0.06 * max;
+    const ratio = Math.exp(-(frontZ - top - sp.skin));
+    for (let i = 0; i < g.light.length; i++) g.light[i] += scatter;
+    for (let i = 0; i < tl.light.length; i++) tl.light[i] += scatter * ratio;
+    // Normalise so the brightest groove right by an LED is 1.
+    max += scatter;
+    for (const a of [g.light, tl.light]) for (let i = 0; i < a.length; i++) a[i] /= max || 1;
+    return { kind: 'inside', path, z0, z1, width: z1 - z0, length: perimeter(path), wire: low(polysOf(outer)[0] ?? path), leds: packLeds(leds), glow: [g, tl] };
   }
   const { led, width } = frame;
   if (led.mode === 'none') return undefined;
@@ -1267,8 +1325,10 @@ function ledLayout(s: Scope, project: Project, outer: CrossSection, frontZ: numb
   const path = mainContour(polysOf(s.t(outer.offset(-(led.mode === 'front' ? width / 2 : w / 2 - 1), 'Round', 2, 96))));
   if (!path) return undefined;
   const strip = Math.max(3, w - 2);
-  if (led.mode === 'front') return { kind: 'front', path, z0: frontZ - d + 0.3, z1: frontZ - d + 0.3, width: strip, length: perimeter(path), wire: led.wire ? low(path) : null };
-  return { kind: 'halo', path, z0: d - 0.3, z1: d - 0.3, width: strip, length: perimeter(path), wire: low(path) };
+  const leds = packLeds(along(path, LED_PITCH).map((l) => ({ p: l.p, n: [0, 0] as Vec2 })));
+  if (led.mode === 'front')
+    return { kind: 'front', path, z0: frontZ - d + 0.3, z1: frontZ - d + 0.3, width: strip, length: perimeter(path), wire: led.wire ? low(path) : null, leds };
+  return { kind: 'halo', path, z0: d - 0.3, z1: d - 0.3, width: strip, length: perimeter(path), wire: low(path), leds };
 }
 
 /** Backlit cells: free width along the outer wall of the hollow for the LED strip. */

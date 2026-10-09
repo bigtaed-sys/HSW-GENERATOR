@@ -65,8 +65,10 @@ export interface LayoutLed {
   length: number;
   /** Where the cable leaves the frame. */
   wire: Vec2 | null;
-  /** Backlit cells: the groove floors, with each vertex's distance to the strip. */
-  glow?: { positions: Float32Array; indices: Uint32Array; dist: Float32Array };
+  /** LEDs along the strip: x, y and the direction they shine (nx, ny; 0, 0 = straight out of the wall plane). */
+  leds: Float32Array;
+  /** Backlit cells: light coming through the groove floors and, much weaker, through the tiles; relative brightness per vertex. */
+  glow?: { positions: Float32Array; indices: Uint32Array; light: Float32Array }[];
 }
 
 export interface Layout {
