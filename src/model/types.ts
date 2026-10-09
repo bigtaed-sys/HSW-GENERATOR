@@ -35,7 +35,10 @@ export interface FrameSettings {
   innerChamfer: number;
   /** How the inner edge of the frame meets the cells: a straight chamfer or a round. */
   innerProfile: InnerProfile;
+  /** Screws through the frame into the wall. */
   screws: boolean;
+  /** Distance between frame screws along the frame. */
+  screwSpacing: number;
   joint: FrameJoint;
   jointLength: number;
   led: LedSettings;

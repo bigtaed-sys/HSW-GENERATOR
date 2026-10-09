@@ -7,6 +7,7 @@ import { meshToStl } from '../export/stl';
 import { makeTestKit } from '../model/testKit';
 import { canonicalGroup, connectorParams } from './connectors';
 import { meshesTo3mf } from '../export/threemf';
+import { meshesToPlated3mf } from '../export/plates3mf';
 import { buildAccessory } from './accessories/build';
 import { accessoryDef } from './accessories/defs';
 import { buildPiece, prepareTools, toMesh } from './build';
@@ -24,7 +25,7 @@ export type WorkerRequest =
       type: 'export';
       id: number;
       project: Project;
-      format: 'stl' | '3mf';
+      format: 'stl' | '3mf' | 'plates';
       include: { panels: boolean; frame: boolean; accessories: boolean };
       names: Record<string, string>;
       /** Export the small fit-test kit instead of the wall. */
@@ -199,7 +200,7 @@ async function handle(msg: WorkerRequest) {
       const project = msg.testKit ? makeTestKit(msg.project) : msg.project;
       const include = msg.testKit ? { panels: true, frame: true, accessories: true } : msg.include;
       const L = layoutFor(project);
-      const items: { name: string; mesh: MeshData }[] = [];
+      const items: { name: string; mesh: MeshData; count?: number }[] = [];
       const pieces = L.layout.pieces.filter((p) => (p.kind === 'panel' ? include.panels : include.frame));
       const total = pieces.length + (include.accessories ? project.accessories.length : 0);
       let done = 0;
@@ -209,7 +210,8 @@ async function handle(msg: WorkerRequest) {
         ctx.postMessage({ type: 'progress', id: msg.id, done: ++done, total } satisfies WorkerResponse);
         await tick();
       }
-      if (include.frame && L.plates.length) {
+      // Seam patches go with the frame, or with the panels when the panels carry the frame.
+      if ((include.frame || (project.frame.mode === 'integrated' && include.panels)) && L.plates.length) {
         const thick = Math.max(0.2, frameStyleParams(project.frame).patch ?? 0.6);
         L.plates.forEach((plate, i) => {
           const s = new Scope();
@@ -233,7 +235,7 @@ async function handle(msg: WorkerRequest) {
         let i = 0;
         for (const u of unique.values()) {
           const suffix = u.count > 1 ? ` x${u.count}` : '';
-          items.push({ name: `${names[u.type] ?? u.type}-${++i}${suffix}`, mesh: accessoryForPrint(u.type, u.params, project.printer.insertTolerance ?? 0) });
+          items.push({ name: `${names[u.type] ?? u.type}-${++i}${suffix}`, mesh: accessoryForPrint(u.type, u.params, project.printer.insertTolerance ?? 0), count: u.count });
           done += u.count;
           ctx.postMessage({ type: 'progress', id: msg.id, done, total } satisfies WorkerResponse);
           await tick();
@@ -259,12 +261,18 @@ async function handle(msg: WorkerRequest) {
           items.push({
             name: `${names.connector ?? 'connector'}-${u.params.n}x x${u.count}`,
             mesh: accessoryForPrint('connector', u.params, project.printer.insertTolerance ?? 0),
+            count: u.count,
           });
       }
       const safe = (s: string) => s.replace(/[^\p{L}\p{N}\-_ .]+/gu, '_');
       const base = safe(project.name || 'hsw-wall');
       let data: Uint8Array;
-      if (msg.format === '3mf') {
+      if (msg.format === 'plates') {
+        // Bambu Studio / OrcaSlicer read plates only from files that name a Bambu-format writer.
+        const { bedW, bedH, margin } = project.printer;
+        data = meshesToPlated3mf(items, { w: bedW, h: bedH, margin }, 'BambuStudio-01.10.00.00');
+        ctx.postMessage({ type: 'export', id: msg.id, data, filename: `${base}.3mf` } satisfies WorkerResponse, [data.buffer]);
+      } else if (msg.format === '3mf') {
         data = meshesTo3mf(items);
         ctx.postMessage({ type: 'export', id: msg.id, data, filename: `${base}.3mf` } satisfies WorkerResponse, [data.buffer]);
       } else {

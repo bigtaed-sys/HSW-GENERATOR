@@ -66,7 +66,7 @@ export const geometry = {
     call<AccessoryShape>({ type: 'accessory', key: '', accType, params }).promise,
   export: (
     project: Project,
-    format: 'stl' | '3mf',
+    format: 'stl' | '3mf' | 'plates',
     include: { panels: boolean; frame: boolean; accessories: boolean },
     names: Record<string, string>,
     testKit = false,

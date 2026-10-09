@@ -336,7 +336,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       p.polys = polysOf(footprint);
       p.bbox = bboxOf(p.polys);
       p.framePolys = bandPolys;
-      if (screwOk) p.screws = frameScrews(mid, bandPolys, cuts, mount.headDiameter);
+      if (screwOk) p.screws = frameScrews(mid, bandPolys, cuts, mount.headDiameter, [], 0, frame.screwSpacing);
       const a = frameAnchor(mid, bandPolys);
       p.frameAnchor = a.p;
       p.frameAnchorAngle = a.angle;
@@ -359,7 +359,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
         const a = frameAnchor(midLine, p.framePolys);
         p.frameAnchor = a.p;
         p.frameAnchorAngle = a.angle;
-        p.screws = frame.screws && frame.width >= mount.headDiameter + 3 ? frameScrews(midLine, p.framePolys, cuts, mount.headDiameter) : [];
+        p.screws = frame.screws && frame.width >= mount.headDiameter + 3 ? frameScrews(midLine, p.framePolys, cuts, mount.headDiameter, [], 0, frame.screwSpacing) : [];
       } else {
         p.screws = [];
         frameBands.delete(p.id);
@@ -427,7 +427,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       const corePolys = polysOf(region);
       const screws = screwOk
         ? [
-            ...frameScrews(mid, corePolys, cuts, mount.headDiameter, lapScrews, lapLen),
+            ...frameScrews(mid, corePolys, cuts, mount.headDiameter, lapScrews, lapLen, frame.screwSpacing),
             ...(laps.length ? [lapScrews[i], lapScrews[(i + 1) % m]] : []),
           ]
         : [];
@@ -1207,6 +1207,7 @@ function frameScrews(
   head: number,
   avoid: Vec2[] = [],
   avoidDist = 0,
+  spacing = 250,
 ): Vec2[] {
   const { runs, stepLen } = midRuns(
     mid,
@@ -1221,7 +1222,7 @@ function frameScrews(
     if (len < head * 2) continue;
     const margin = Math.min(40, len * 0.18);
     const usable = len - 2 * margin;
-    const count = len < 120 ? 1 : Math.max(2, Math.ceil(usable / 250) + 1);
+    const count = len < Math.min(120, spacing) ? 1 : Math.max(2, Math.ceil(usable / spacing) + 1);
     for (let i = 0; i < count; i++) {
       const at = count === 1 ? len / 2 : margin + (usable * i) / (count - 1);
       out.push(run[Math.min(run.length - 1, Math.round(at / stepLen))]);

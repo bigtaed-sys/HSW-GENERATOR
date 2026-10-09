@@ -15,7 +15,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const lang = useStore((s) => s.lang);
   const project = useStore((s) => s.project);
   const layout = useGeo((s) => s.layout);
-  const [format, setFormat] = useState<'stl' | '3mf'>('stl');
+  const [format, setFormat] = useState<'stl' | '3mf' | 'plates'>('stl');
   const [include, setInclude] = useState({ panels: true, frame: true, accessories: true });
   const [progress, setProgress] = useState<{ d: number; t: number } | null>(null);
   const [jobId, setJobId] = useState<number | null>(null);
@@ -46,7 +46,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     setJobId(job.id);
     try {
       const { data, filename } = await job.promise;
-      download(data as BlobPart, filename, format === '3mf' ? 'model/3mf' : 'application/zip');
+      download(data as BlobPart, filename, format === 'stl' ? 'application/zip' : 'model/3mf');
     } catch (e) {
       setError(String(e));
     } finally {
@@ -99,14 +99,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <div className="option-list" style={{ marginBottom: 16 }}>
-            {(['stl', '3mf'] as const).map((f) => (
+            {(['stl', '3mf', 'plates'] as const).map((f) => (
               <label key={f} className={`option ${format === f ? 'on' : ''}`}>
                 <input type="radio" checked={format === f} onChange={() => setFormat(f)} />
                 <FileBox size={16} />
-                {f === 'stl' ? t('formatStl') : t('format3mf')}
+                {f === 'stl' ? t('formatStl') : f === '3mf' ? t('format3mf') : t('formatPlates')}
               </label>
             ))}
           </div>
+          {format === 'plates' && (
+            <p className="hint" style={{ marginTop: -8, marginBottom: 16 }}>
+              {t('formatPlatesHint').replace('{bed}', `${project.printer.bedW}×${project.printer.bedH}`)}
+            </p>
+          )}
           <h3 className="section-title">{t('include')}</h3>
           <div className="option-list">
             {(['panels', 'frame', 'accessories'] as const).map((k) => (

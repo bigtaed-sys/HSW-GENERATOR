@@ -192,7 +192,8 @@ const LED_COLORS = ['#ffc27a', '#fff1dc', '#dfe9ff', '#ff6fae', '#ff3b3b', '#3b8
 function LedExtras() {
   const t = useT();
   const led = useGeo((s) => s.layout?.led);
-  const color = useStore((s) => s.project.frame.led.color);
+  const frame = useStore((s) => s.project.frame);
+  const color = frame.led.color;
   const sim = useStore((s) => s.ledSim);
   const update = useStore((s) => s.update);
   const setUi = useStore((s) => s.setUi);
@@ -200,11 +201,37 @@ function LedExtras() {
   return (
     <>
       <p className="hint" style={{ marginBottom: 10 }}>
-        {t(led.kind === 'inside' ? 'ledInsideHint' : 'ledLength')} <b>≈{(led.length / 1000).toFixed(2)} m</b>
+        {t(led.kind !== 'inside' ? 'ledLength' : frameStyleParams(frame).side === 1 ? 'ledInsideInnerHint' : 'ledInsideHint')} <b>≈{(led.length / 1000).toFixed(2)} m</b>
       </p>
       <Toggle label={t('ledSim')} checked={sim} onChange={(v) => setUi({ ledSim: v, ...(v ? { view: '3d' as const } : {}) })} />
       <Swatches palette={LED_COLORS} value={color} onChange={(v) => update((p) => void (p.frame.led.color = v))} />
     </>
+  );
+}
+
+/** Screws through the frame: on or off, and how far apart. */
+function FrameMounting() {
+  const t = useT();
+  const frame = useStore((s) => s.project.frame);
+  const mount = useStore((s) => s.project.mount);
+  const update = useStore((s) => s.update);
+  const bind = useBind();
+  const integrated = frame.mode === 'integrated';
+  const held = mount.mode === 'connectors' && (mount.junctions || mount.seams || mount.edges);
+  return (
+    <Section title={t('frameMountTitle')}>
+      <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
+      {frame.screws ? (
+        <>
+          <Slider label={t('frameScrewSpacing')} value={frame.screwSpacing} min={80} max={600} step={10} onChange={bind((p, v) => (p.frame.screwSpacing = v))} />
+          {frame.width < mount.headDiameter + 3 && <p className="hint warn">{t('frameScrewsNarrow')}</p>}
+        </>
+      ) : integrated ? (
+        <p className={`hint ${held ? '' : 'warn'}`}>{t(held ? 'frameNoScrewsIntegrated' : 'frameNoScrewsNoConnectors')}</p>
+      ) : (
+        <p className="hint">{t('frameNoScrewsSeparate')}</p>
+      )}
+    </Section>
   );
 }
 
@@ -314,7 +341,6 @@ function FrameTab() {
           </Section>
           {frame.mode === 'separate' && frame.style === 'lit' && (
             <Section title={t('frameJoints')}>
-              <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
               <p className="hint">{t('jointsLitHint')}</p>
             </Section>
           )}
@@ -331,35 +357,34 @@ function FrameTab() {
             {frame.joint === 'lap' && (
               <Slider label={t('jointLength')} value={frame.jointLength} min={20} max={80} onChange={bind((p, v) => (p.frame.jointLength = v))} />
             )}
-            <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
             <p className="hint">{t('frameJointHint')}</p>
           </Section>}
-          {frame.mode === 'integrated' && (
-            <Section>
-              <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
-            </Section>
-          )}
+          <FrameMounting />
           <Section title={t('ledTitle')}>
-            <Segmented
-              value={frame.led.mode}
-              onChange={(v) => update((p) => void (p.frame.led.mode = v))}
-              options={[
-                { value: 'none', label: t('ledNone') },
-                { value: 'front', label: t('ledFront') },
-                { value: 'halo', label: t('ledHalo') },
-              ]}
-            />
-            <p className="hint" style={{ marginBottom: 12 }}>
-              {frame.led.mode === 'front' ? t('ledFrontHint') : frame.led.mode === 'halo' ? t('ledHaloHint') : t('ledNoneHint')}
-            </p>
-            {frame.led.mode !== 'none' && (
+            {frame.style !== 'lit' && (
               <>
-                <Slider label={t('ledWidth')} value={frame.led.width} min={5} max={30} step={0.5} onChange={bind((p, v) => (p.frame.led.width = v))} />
-                <Slider label={t('ledDepth')} value={frame.led.depth} min={1} max={8} step={0.5} onChange={bind((p, v) => (p.frame.led.depth = v))} />
-                {frame.led.mode === 'front' && (
-                  <Toggle label={t('ledWire')} checked={frame.led.wire} onChange={(v) => update((p) => void (p.frame.led.wire = v))} />
+                <Segmented
+                  value={frame.led.mode}
+                  onChange={(v) => update((p) => void (p.frame.led.mode = v))}
+                  options={[
+                    { value: 'none', label: t('ledNone') },
+                    { value: 'front', label: t('ledFront') },
+                    { value: 'halo', label: t('ledHalo') },
+                  ]}
+                />
+                <p className="hint" style={{ marginBottom: 12 }}>
+                  {frame.led.mode === 'front' ? t('ledFrontHint') : frame.led.mode === 'halo' ? t('ledHaloHint') : t('ledNoneHint')}
+                </p>
+                {frame.led.mode !== 'none' && (
+                  <>
+                    <Slider label={t('ledWidth')} value={frame.led.width} min={5} max={30} step={0.5} onChange={bind((p, v) => (p.frame.led.width = v))} />
+                    <Slider label={t('ledDepth')} value={frame.led.depth} min={1} max={8} step={0.5} onChange={bind((p, v) => (p.frame.led.depth = v))} />
+                    {frame.led.mode === 'front' && (
+                      <Toggle label={t('ledWire')} checked={frame.led.wire} onChange={(v) => update((p) => void (p.frame.led.wire = v))} />
+                    )}
+                    {frame.led.width > frame.width - 3 && <p className="hint warn">{t('ledTooWide')}</p>}
+                  </>
                 )}
-                {frame.led.width > frame.width - 3 && <p className="hint warn">{t('ledTooWide')}</p>}
               </>
             )}
             <LedExtras />
