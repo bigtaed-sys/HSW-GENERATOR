@@ -51,6 +51,24 @@ export interface LayoutConnector {
   panels: string[];
 }
 
+/** Where the LED strip goes and how it lights the frame, for the lighting preview. */
+export interface LayoutLed {
+  /** inside: on the inner face of the outer wall of a Backlit cells hollow; front: in the front groove; halo: in the back rebate. */
+  kind: 'inside' | 'front' | 'halo';
+  /** Strip centre line, closed, counter-clockwise. */
+  path: Vec2[];
+  /** inside: the strip stands from z0 to z1; front/halo: it lies flat at z0, `width` wide. */
+  z0: number;
+  z1: number;
+  width: number;
+  /** Strip length in mm. */
+  length: number;
+  /** Where the cable leaves the frame. */
+  wire: Vec2 | null;
+  /** Backlit cells: the groove floors, with each vertex's distance to the strip. */
+  glow?: { positions: Float32Array; indices: Uint32Array; dist: Float32Array };
+}
+
 export interface Layout {
   outer: Vec2[][];
   inner: Vec2[][];
@@ -58,6 +76,7 @@ export interface Layout {
   pattern?: Vec2[][];
   /** Backlit cells: thin patches glued behind the seams between frame parts. */
   plates?: { id: string; label: string; polys: Vec2[][] }[];
+  led?: LayoutLed;
   cells: LayoutCell[];
   pieces: LayoutPiece[];
   connectors: LayoutConnector[];

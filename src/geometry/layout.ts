@@ -15,7 +15,7 @@ import {
 import { cellAt, cellCenter, hexagon, latticeRange, tile, type Vec2 } from './lattice';
 import { placeConnectors } from './connectors';
 import { frameStyleParams } from './frames/styles';
-import type { Layout, LayoutCell, LayoutPiece } from './layoutTypes';
+import type { Layout, LayoutCell, LayoutLed, LayoutPiece } from './layoutTypes';
 
 const hexArea = (flat: number) => (Math.sqrt(3) / 2) * flat * flat;
 
@@ -219,14 +219,26 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     // edge panels; if an edge panel still does not fit (e.g. at an acute corner),
     // reserve more and lay the panels out again.
     const panelOf = new Map<string, string>();
-    let reserve = integrated ? frame.width : 0;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    // With grooved seams (Backlit cells) a seam may wander half a cell into the next panel.
+    const reserve0 = integrated ? frame.width + (frame.style === 'lit' ? PITCH_Y / 2 : 0) : 0;
+    const kOf = (w: number) => Math.max(1, Math.floor((w / TILE_R - 0.5) / 1.5));
+    const nOf = (h: number) => Math.max(1, Math.floor((h - PITCH_Y / 2) / PITCH_Y));
+    // Edge groups thinner than two rows/columns leave slivers of cells holding a piece of frame.
+    const reserves: number[] = [];
+    for (let r = reserve0; reserves.length < 10; r += PITCH_Y) {
+      if (reserves.length && (kOf(usableW - r) < 2 || nOf(usableH - r) < 2)) break;
+      reserves.push(r);
+    }
+    let best = { reserve: reserve0, bad: Infinity };
+    for (let attempt = 0; attempt <= reserves.length; attempt++) {
+      // The last pass repeats the best layout found when none fitted.
+      const final = attempt === reserves.length;
+      if (final && best.bad === 0) break;
+      const reserve = final ? best.reserve : reserves[attempt];
       regions.clear();
       pieces.length = 0;
       panelOf.clear();
       // An integrated frame makes the edge panels wider by the frame width.
-      const kOf = (w: number) => Math.max(1, Math.floor((w / TILE_R - 0.5) / 1.5));
-      const nOf = (h: number) => Math.max(1, Math.floor((h - PITCH_Y / 2) / PITCH_Y));
       const colGroups = reserve
         ? splitWithEdges(usedCols, kOf(usableW - 2 * reserve), kOf(usableW - reserve), kMax)
         : splitEven(usedCols, kMax);
@@ -267,16 +279,16 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
           });
         });
       });
-      if (!integrated) break;
+      if (!integrated || final) break;
       const trialBand = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
       const owned = integrateFrame(K, s, outer, inner, trialBand, frame.width, pieces, frame.style === 'lit' ? grid : undefined);
-      const fits = pieces.every((pc) => {
+      const bad = pieces.filter((pc) => {
         const part = owned.get(pc.id);
         const fp = part ? s.t(regions.get(pc.id)!.add(part)) : regions.get(pc.id)!;
-        return fitOnBed(polysOf(fp), usableW, usableH).angle !== null;
-      });
-      if (fits) break;
-      reserve += frame.width * 0.75 + 10;
+        return fitOnBed(polysOf(fp), usableW, usableH).angle === null;
+      }).length;
+      if (bad < best.bad) best = { reserve, bad };
+      if (!bad) break;
     }
     for (const cell of cells) cell.panel = panelOf.get(cellKey(cell.c, cell.r)) ?? '';
 
@@ -503,11 +515,14 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     }
   }
 
+  const led = hasFrame && !inner.isEmpty() ? ledLayout(s, project, outer, frontZ, pattern) : undefined;
+
   const ob = outer.bounds();
   const layout: Layout = {
     outer: polysOf(outer),
     inner: hasFrame ? polysOf(inner) : [],
     pattern: pattern ? polysOf(pattern.cut) : undefined,
+    led,
     plates: plates.map((p, i) => ({ id: `j${i}`, label: `J${i + 1}`, polys: polysOf(p) })),
     cells,
     pieces,
@@ -977,7 +992,7 @@ function integrateFrame(
   for (let i = 0; i < owners.length; i++) owners[i] = owners[i] ?? last, (last = owners[i]);
   // Along slanted edges the zigzag seam flips owners back and forth; fold
   // stretches shorter than minRun into the longer neighbouring stretch.
-  const minRun = Math.max(40, width * 2) / step;
+  const minRun = Math.max(40, Math.min(width * 2, 3 * PITCH_Y)) / step;
   for (let pass = 0; pass < 20; pass++) {
     const runs: { id: string | null; start: number; len: number }[] = [];
     owners.forEach((o, i) => {
@@ -1192,6 +1207,68 @@ function frameScrews(
     }
   }
   return out;
+}
+
+/** Backlit cells: top of the hollow and top of the groove floors. */
+export function litLevels(frame: Project['frame'], frontZ: number) {
+  const pt = frameStyleParams(frame);
+  const top = frontZ - Math.max(pt.skin + 0.8, Math.min(pt.plate, frontZ - 1.5));
+  return { top, floor: top + Math.max(0.2, pt.skin) };
+}
+
+const mainContour = (polys: Vec2[][]) =>
+  polys.length ? polys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a)) : null;
+
+const perimeter = (p: Vec2[]) => p.reduce((a, q, i) => a + Math.hypot(p[(i + 1) % p.length][0] - q[0], p[(i + 1) % p.length][1] - q[1]), 0);
+
+/** Distance from each 2D point (xy of a flat xyz array) to a closed polyline. */
+function distToPath(xyz: Float32Array, path: Vec2[]): Float32Array {
+  const out = new Float32Array(xyz.length / 3);
+  const n = path.length;
+  for (let i = 0; i < out.length; i++) {
+    const x = xyz[i * 3],
+      y = xyz[i * 3 + 1];
+    let best = Infinity;
+    for (let j = 0; j < n; j++) {
+      const [ax, ay] = path[j];
+      const [bx, by] = path[(j + 1) % n];
+      const dx = bx - ax,
+        dy = by - ay;
+      const l2 = dx * dx + dy * dy || 1;
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
+      const d = (ax + dx * u - x) ** 2 + (ay + dy * u - y) ** 2;
+      if (d < best) best = d;
+    }
+    out[i] = Math.sqrt(best);
+  }
+  return out;
+}
+
+/** Where the LED strip lies, for the lighting preview and the strip length. */
+function ledLayout(s: Scope, project: Project, outer: CrossSection, frontZ: number, pattern: FramePattern | null): LayoutLed | undefined {
+  const { frame } = project;
+  const low = (p: Vec2[]) => p.reduce((a, q) => (q[1] < a[1] ? q : a), p[0]);
+  if (frame.style === 'lit' && pattern?.hollow) {
+    const { top, floor } = litLevels(frame, frontZ);
+    const path = mainContour(polysOf(s.t(outer.offset(-(frameStyleParams(frame).wall + 0.6), 'Round', 2, 96))));
+    if (!path) return undefined;
+    const m = s.t(s.t(pattern.cut.extrude(0.01)).translate([0, 0, floor + 0.02]));
+    const mesh = m.getMesh();
+    const np = mesh.numProp;
+    const positions = new Float32Array((mesh.vertProperties.length / np) * 3);
+    for (let i = 0; i < positions.length / 3; i++) for (let k = 0; k < 3; k++) positions[i * 3 + k] = mesh.vertProperties[i * np + k];
+    const glow = { positions, indices: new Uint32Array(mesh.triVerts), dist: distToPath(positions, path) };
+    return { kind: 'inside', path, z0: 0.6, z1: top - 0.4, width: top - 1, length: perimeter(path), wire: low(polysOf(outer)[0] ?? path), glow };
+  }
+  const { led, width } = frame;
+  if (led.mode === 'none') return undefined;
+  const w = Math.min(led.width, width - 3);
+  const d = Math.min(led.depth, frontZ - 2);
+  const path = mainContour(polysOf(s.t(outer.offset(-(led.mode === 'front' ? width / 2 : w / 2 - 1), 'Round', 2, 96))));
+  if (!path) return undefined;
+  const strip = Math.max(3, w - 2);
+  if (led.mode === 'front') return { kind: 'front', path, z0: frontZ - d + 0.3, z1: frontZ - d + 0.3, width: strip, length: perimeter(path), wire: led.wire ? low(path) : null };
+  return { kind: 'halo', path, z0: d - 0.3, z1: d - 0.3, width: strip, length: perimeter(path), wire: low(path) };
 }
 
 /** Backlit cells: free width along the outer wall of the hollow for the LED strip. */

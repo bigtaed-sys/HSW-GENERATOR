@@ -17,6 +17,8 @@ interface UiState {
   showPanels: boolean;
   showAccessories: boolean;
   exploded: boolean;
+  /** 3D: lights off, LED strip on. */
+  ledSim: boolean;
   leftTab: 'wall' | 'frame' | 'grid' | 'cutouts' | 'print';
   rightTab: 'library' | 'inspector';
 }
@@ -101,6 +103,7 @@ export const useStore = create<Store>((set, get) => ({
   showPanels: true,
   showAccessories: true,
   exploded: false,
+  ledSim: false,
   leftTab: 'wall',
   rightTab: 'library',
   ...saved.ui,
