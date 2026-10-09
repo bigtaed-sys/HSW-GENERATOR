@@ -37,6 +37,13 @@ const T = {
     accessoriesText: 'Вставьте аксессуары в ячейки до щелчка, как на схеме.',
     noAccessories: 'Аксессуаров нет.',
     total: 'Всего саморезов',
+    patches: 'накладок',
+    patchTitle: 'Накладки на стыки',
+    patchText:
+      'Канавки рамки идут через стыки, а дно канавки на стыке — это накладка-зигзаг J. Перед установкой детали вклейте накладку половиной в паз на её обратной стороне, заподлицо. Вторая деталь садится на выступающую половину — перед её установкой нанесите клей на эту половину. Клей — тонким слоем, чтобы не выдавился в канавку.',
+    patchFirst: 'Вклеить в',
+    patchThen: 'Затем ставится',
+    patchReminder: (list: string) => `Перед этим шагом вклейте накладки ${list} половиной в пазы деталей (см. шаг «Накладки на стыки»).`,
   },
   en: {
     title: 'Assembly instructions',
@@ -71,12 +78,41 @@ const T = {
     accessoriesText: 'Click the accessories into their cells as shown.',
     noAccessories: 'No accessories.',
     total: 'Screws in total',
+    patches: 'patches',
+    patchTitle: 'Seam patches',
+    patchText:
+      'The frame grooves run across the seams, and the groove floor at a seam is a zigzag patch J. Before fitting a part, glue the patch halfway into the pocket on its back, flush. The next part sits on the half that sticks out: put glue on that half before fitting it. Use a thin layer of glue so none squeezes into the groove.',
+    patchFirst: 'Glue into',
+    patchThen: 'Then fit',
+    patchReminder: (list: string) => `Before this step, glue patches ${list} halfway into the pockets of these parts (see “Seam patches”).`,
   },
 };
 
+function centroidOf(polys: Vec2[][]): Vec2 {
+  const pts = polys.flat();
+  return [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+}
+
+function inside(x: number, y: number, polys: Vec2[][]) {
+  let c = false;
+  for (const p of polys)
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+      if (p[i][1] > y !== p[j][1] > y && x < ((p[j][0] - p[i][0]) * (y - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
+  return c;
+}
+
+const plateMarks = (layout: Layout, highlight?: Set<string>) =>
+  (layout.plates ?? [])
+    .map((pl) => {
+      const d = pl.polys.map((q) => 'M' + q.map(([x, y]) => `${x.toFixed(1)},${(-y).toFixed(1)}`).join('L') + 'Z').join('');
+      const on = !highlight || highlight.has(pl.id);
+      return `<path d="${d}" fill="${on ? '#2563eb' : 'none'}" fill-opacity="0.25" stroke="#2563eb" stroke-width="${on ? 1.5 : 0.8}" stroke-dasharray="4 3"/>`;
+    })
+    .join('');
+
 const esc = (s: string) => s.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function miniMap(layout: Layout, current: Set<string>, done: Set<string>, extra = ''): string {
+function miniMap(layout: Layout, current: Set<string>, done: Set<string>, extra = '', tags: { label: string; at: Vec2 }[] = []): string {
   const [x0, y0, x1, y1] = layout.pieces.reduce(
     (b, p) => [Math.min(b[0], p.bbox[0]), Math.min(b[1], p.bbox[1]), Math.max(b[2], p.bbox[2]), Math.max(b[3], p.bbox[3])],
     [Infinity, Infinity, -Infinity, -Infinity],
@@ -98,7 +134,13 @@ function miniMap(layout: Layout, current: Set<string>, done: Set<string>, extra 
         `<text x="${p.anchor[0].toFixed(1)}" y="${(-p.anchor[1] + 5).toFixed(1)}" font-size="${p.kind === 'frame' ? 11 : 15}" text-anchor="middle" font-weight="700" fill="${current.has(p.id) ? '#1d1406' : '#666'}">${p.label}</text>`,
     )
     .join('');
-  return `<svg viewBox="${x0 - pad} ${-y1 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}" class="map">${shapes}${extra}${labels}</svg>`;
+  const tagText = tags
+    .map(
+      (g) =>
+        `<text x="${g.at[0].toFixed(1)}" y="${(-g.at[1] + 4).toFixed(1)}" font-size="11" text-anchor="middle" font-weight="700" fill="#1d4ed8" stroke="#fff" stroke-width="3" paint-order="stroke">${g.label}</text>`,
+    )
+    .join('');
+  return `<svg viewBox="${x0 - pad} ${-y1 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}" class="map">${shapes}${extra}${labels}${tagText}</svg>`;
 }
 
 /** A self-contained, printable HTML page with numbered assembly steps. */
@@ -117,11 +159,40 @@ export function instructionsHtml(
   const done = new Set<string>();
   const list = (ps: LayoutPiece[]) => ps.map((p) => p.label).join(', ');
 
+  // Seam patches: which two parts each one joins, glued first into the part fitted earlier.
+  const order = [
+    ...panels.slice().sort((a, b) => b.label.replace(/\d+$/, '').localeCompare(a.label.replace(/\d+$/, '')) || a.bbox[0] - b.bbox[0]),
+    ...frame.filter((p) => p.stage !== 2),
+    ...frame.filter((p) => p.stage === 2),
+  ];
+  const rank = new Map(order.map((p, i) => [p.id, i]));
+  const patches = (layout.plates ?? []).map((pl) => {
+    const pts = pl.polys.flat();
+    const parts = layout.pieces
+      .filter((p) => (p.kind === 'frame' || p.framePolys) && pts.some(([x, y]) => inside(x, y, p.polys)))
+      .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    return { pl, first: parts[0], then: parts[1] };
+  });
+  const reminder = (ids: Set<string>) => {
+    const due = patches.filter((q) => q.first && ids.has(q.first.id));
+    return due.length ? ` ${t.patchReminder(due.map((q) => q.pl.label).join(', '))}` : '';
+  };
+
   steps.push({
     title: t.prepare,
     text: t.prepareText(layout.stats.width.toFixed(0), layout.stats.height.toFixed(0)),
     map: miniMap(layout, new Set(), done),
   });
+  if (patches.length) {
+    const rowsP = patches
+      .map((q) => `<tr><td><b>${q.pl.label}</b></td><td>${q.first?.label ?? '—'}</td><td>${q.then?.label ?? '—'}</td></tr>`)
+      .join('');
+    steps.push({
+      title: t.patchTitle,
+      text: `${t.patchText}<table style="margin-top:8px"><tr><th></th><th>${t.patchFirst}</th><th>${t.patchThen}</th></tr>${rowsP}</table>`,
+      map: miniMap(layout, new Set(), done, plateMarks(layout), (layout.plates ?? []).map((pl) => ({ label: pl.label, at: centroidOf(pl.polys) }))),
+    });
+  }
 
   // Panels: bottom row first (labels start with the row letter, A at the top).
   const rows = new Map<string, LayoutPiece[]>();
@@ -139,7 +210,8 @@ export function instructionsHtml(
     const marks = conns
       .map((k) => `<circle cx="${k.screw[0].toFixed(1)}" cy="${(-k.screw[1]).toFixed(1)}" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/>`)
       .join('');
-    const text = layout.connectors.length ? t.rowTextConn(list(ps), conns.length) : t.rowText(list(ps), ps.reduce((a, p) => a + mountsOf(p), 0));
+    const text =
+      (layout.connectors.length ? t.rowTextConn(list(ps), conns.length) : t.rowText(list(ps), ps.reduce((a, p) => a + mountsOf(p), 0))) + reminder(cur);
     steps.push({ title: t.rowTitle(r), text, map: miniMap(layout, cur, done, marks) });
     ps.forEach((p) => done.add(p.id));
   }
@@ -152,14 +224,14 @@ export function instructionsHtml(
   const over = frame.filter((p) => p.stage === 2);
   if (frame.length && over.length) {
     const nUnder = under.reduce((a, p) => a + p.screws.filter((sc) => shared.get(key(sc)) === 1).length, 0);
-    steps.push({ title: t.frameUnder, text: t.frameUnderText(list(under), nUnder), map: miniMap(layout, new Set(under.map((p) => p.id)), done) });
+    steps.push({ title: t.frameUnder, text: t.frameUnderText(list(under), nUnder) + reminder(new Set(under.map((p) => p.id))), map: miniMap(layout, new Set(under.map((p) => p.id)), done) });
     under.forEach((p) => done.add(p.id));
     const nOver = over.reduce((a, p) => a + p.screws.length, 0);
-    steps.push({ title: t.frameOver, text: t.frameOverText(list(over), nOver), map: miniMap(layout, new Set(over.map((p) => p.id)), done) });
+    steps.push({ title: t.frameOver, text: t.frameOverText(list(over), nOver) + reminder(new Set(over.map((p) => p.id))), map: miniMap(layout, new Set(over.map((p) => p.id)), done) });
     over.forEach((p) => done.add(p.id));
   } else if (frame.length) {
     const n = frame.reduce((a, p) => a + p.screws.length, 0);
-    steps.push({ title: t.frameSingle, text: t.frameSingleText(list(frame), n), map: miniMap(layout, new Set(frame.map((p) => p.id)), done) });
+    steps.push({ title: t.frameSingle, text: t.frameSingleText(list(frame), n) + reminder(new Set(frame.map((p) => p.id))), map: miniMap(layout, new Set(frame.map((p) => p.id)), done) });
     frame.forEach((p) => done.add(p.id));
   }
 
@@ -190,6 +262,14 @@ export function instructionsHtml(
         `<tr><td><b>${p.label}</b></td><td>${p.printSize[0].toFixed(0)} × ${p.printSize[1].toFixed(0)} mm</td><td>${p.printAngle ?? '—'}°</td></tr>`,
     )
     .join('');
+  const patchRows = patches
+    .map((q) => {
+      const pts = q.pl.polys.flat();
+      const w = Math.max(...pts.map((v) => v[0])) - Math.min(...pts.map((v) => v[0]));
+      const h = Math.max(...pts.map((v) => v[1])) - Math.min(...pts.map((v) => v[1]));
+      return `<tr><td><b>${q.pl.label}</b></td><td>${w.toFixed(0)} × ${h.toFixed(0)} mm</td><td>—</td></tr>`;
+    })
+    .join('');
 
   return `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -210,13 +290,13 @@ export function instructionsHtml(
 <div class="muted">${t.title}</div>
 <div class="stats">
   <div><span class="muted">${t.size}</span><b>${layout.stats.width.toFixed(0)} × ${layout.stats.height.toFixed(0)} mm</b></div>
-  <div><span class="muted">${t.parts}</span><b>${panels.length} ${t.panels} + ${frame.length} ${t.frame}</b></div>
+  <div><span class="muted">${t.parts}</span><b>${panels.length} ${t.panels}${frame.length ? ` + ${frame.length} ${t.frame}` : ''}${patches.length ? ` + ${patches.length} ${t.patches}` : ''}</b></div>
   <div><span class="muted">${t.total}</span><b>${totalScrews} × ⌀${project.mount.screwDiameter} mm</b></div>
   <div><span class="muted">${t.filament}</span><b>≈ ${grams >= 1000 ? (grams / 1000).toFixed(2) + ' kg' : grams.toFixed(0) + ' g'}</b></div>
 </div>
 <div class="grid">
 ${steps.map((s, i) => `<section class="card"><h2><span class="num">${i + 1}</span>${esc(s.title)}</h2><div>${s.text}</div>${s.map}</section>`).join('\n')}
-<section class="card"><h2>${t.printList}</h2><table><tr><th>${t.piece}</th><th>${t.printSize}</th><th>${t.rotation}</th></tr>${rowsHtml}</table></section>
+<section class="card"><h2>${t.printList}</h2><table><tr><th>${t.piece}</th><th>${t.printSize}</th><th>${t.rotation}</th></tr>${rowsHtml}${patchRows}</table></section>
 </div>
 </body></html>`;
 }
