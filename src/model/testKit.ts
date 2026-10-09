@@ -15,7 +15,7 @@ export function makeTestKit(project: Project): Project {
   const innerW = 6.2 * PITCH_X;
   const innerH = 3.6 * PITCH_Y;
   p.name = `${project.name || 'hsw'} test`;
-  p.wall = { shape: p.wall.shape === 'honeycomb' ? 'honeycomb' : 'rect', width: innerW + 2 * fw, height: innerH + 2 * fw, cornerRadius: Math.min(p.wall.cornerRadius, 12) };
+  p.wall = { shape: p.wall.shape === 'honeycomb' ? 'honeycomb' : 'rect', width: innerW + 2 * fw, height: innerH + 2 * fw, cornerRadius: Math.min(p.wall.cornerRadius, 12), points: [] };
   p.cutouts = [];
   p.cells = {};
   p.grid = { ...p.grid, offsetX: 0, offsetY: 0 };

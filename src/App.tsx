@@ -1,4 +1,4 @@
-import { AlertTriangle, Eye, EyeOff, Hexagon, Layers, Maximize, MousePointer2, RotateCcw, Bolt, Shapes, Square } from 'lucide-react';
+import { PenTool, AlertTriangle, Eye, EyeOff, Hexagon, Layers, Maximize, MousePointer2, RotateCcw, Bolt, Shapes, Square } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useT } from './i18n';
 import { useGeo } from './model/geo';
@@ -75,8 +75,18 @@ function CanvasToolbar() {
     { id: 'mount', icon: <Bolt size={16} />, label: t('toolMount') },
     { id: 'reset', icon: <RotateCcw size={16} />, label: t('toolReset') },
   ] as const;
+  const custom = s.project.wall.shape === 'custom';
   return (
     <div className="floating bc">
+      {s.view === '2d' && custom && (
+        <button
+          className={`icon-btn ${s.tool === 'outline' && !s.placing ? 'active' : ''}`}
+          title={t('toolOutline')}
+          onClick={() => s.setUi({ tool: 'outline', placing: null })}
+        >
+          <PenTool size={16} />
+        </button>
+      )}
       {s.view === '2d' &&
         tools.map((x) => (
           <button

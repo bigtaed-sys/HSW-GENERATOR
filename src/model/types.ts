@@ -3,7 +3,7 @@
 
 export type Lang = 'ru' | 'en';
 
-export type WallShape = 'rect' | 'hexagon' | 'ellipse' | 'honeycomb';
+export type WallShape = 'rect' | 'hexagon' | 'ellipse' | 'honeycomb' | 'custom';
 export type CellMode = 'whole' | 'partial';
 export type CellOverride = 'solid' | 'mount' | 'open';
 
@@ -12,6 +12,8 @@ export interface WallSettings {
   width: number;
   height: number;
   cornerRadius: number;
+  /** Outline for the custom shape, in mm around the wall centre. */
+  points: [number, number][];
 }
 
 export type FrameJoint = 'none' | 'lap';

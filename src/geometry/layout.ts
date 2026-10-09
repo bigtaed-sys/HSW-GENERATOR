@@ -60,6 +60,7 @@ export interface FrameParts {
 
 function shapePolygon(project: Project): Vec2[] {
   const { shape, width: w, height: h } = project.wall;
+  if (shape === 'custom' && project.wall.points?.length >= 3) return project.wall.points.map(([x, y]) => [x, y] as Vec2);
   if (shape === 'hexagon') {
     const q = Math.min(h / (2 * Math.sqrt(3)), w / 2 - 1);
     return [
@@ -123,7 +124,12 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   } else {
     outer = s.t(new CS([ccw(shapePolygon(project))]));
     const r = Math.min(wall.cornerRadius, Math.min(wall.width, wall.height) / 2 - 1);
-    if (r > 0.05) outer = s.t(s.t(outer.offset(-r, 'Miter')).offset(r, 'Round', 2, 96));
+    if (r > 0.05) {
+      // Round outside corners, then (for custom outlines) inside corners too.
+      outer = s.t(s.t(outer.offset(-r, 'Miter')).offset(r, 'Round', 2, 96));
+      if (wall.shape === 'custom') outer = s.t(s.t(outer.offset(r, 'Round', 2, 96)).offset(-r, 'Miter'));
+    }
+    if (outer.isEmpty()) warnings.push('warnBadOutline');
   }
 
   const hasFrame = !honeycomb && frame.width > 0.01;
@@ -204,51 +210,69 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       const band = s.t(s.t(CS.square([b.max[0] - b.min[0] + 2, 1.5 * PITCH_Y])).translate([b.min[0] - 1, y0]));
       if (s.t(band.intersect(gridRegion)).area() > 1) usedRows.push(r);
     }
-    // An integrated frame makes the edge panels wider by the frame width.
-    const fwI = integrated ? frame.width : 0;
-    const kOf = (w: number) => Math.max(1, Math.floor((w / TILE_R - 0.5) / 1.5));
-    const nOf = (h: number) => Math.max(1, Math.floor((h - PITCH_Y / 2) / PITCH_Y));
-    const colGroups = fwI
-      ? splitWithEdges(usedCols, kOf(usableW - 2 * fwI), kOf(usableW - fwI), kMax)
-      : splitEven(usedCols, kMax);
-    const rowGroups = fwI
-      ? splitWithEdges(usedRows, nOf(usableH - 2 * fwI), nOf(usableH - fwI), nMax)
-      : splitEven(usedRows, nMax);
-
+    // An integrated frame makes the edge panels bigger. Reserve the frame width on
+    // edge panels; if an edge panel still does not fit (e.g. at an acute corner),
+    // reserve more and lay the panels out again.
     const panelOf = new Map<string, string>();
-    rowGroups.forEach((rows, gj) => {
-      colGroups.forEach((cols, gi) => {
-        const id = `p${gi}_${gj}`;
-        const tiles: Vec2[][] = [];
-        for (const c of cols)
-          for (const r of rows) {
-            const [x, y] = cellCenter(c, r, grid);
-            tiles.push(tile(x, y));
-            panelOf.set(cellKey(c, r), id);
-          }
-        const union = s.t(s.t(s.t(new CS(tiles, 'Positive')).offset(0.005, 'Miter')).offset(-0.005, 'Miter'));
-        const region = s.t(union.intersect(gridRegion));
-        if (region.area() < 30) return;
-        regions.set(id, region);
-        const polys = polysOf(region);
-        const row = rowGroups.length - 1 - gj;
-        pieces.push({
-          id,
-          kind: 'panel',
-          label: `${String.fromCharCode(65 + (row % 26))}${gi + 1}`,
-          polys,
-          bbox: bboxOf(polys),
-          printAngle: null,
-          printSize: [0, 0],
-          holes: 0,
-          volume: 0,
-          screws: [],
-          anchor: centroid(polys),
-          anchorAngle: 0,
-          stage: 0,
+    let reserve = integrated ? frame.width : 0;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      regions.clear();
+      pieces.length = 0;
+      panelOf.clear();
+      // An integrated frame makes the edge panels wider by the frame width.
+      const kOf = (w: number) => Math.max(1, Math.floor((w / TILE_R - 0.5) / 1.5));
+      const nOf = (h: number) => Math.max(1, Math.floor((h - PITCH_Y / 2) / PITCH_Y));
+      const colGroups = reserve
+        ? splitWithEdges(usedCols, kOf(usableW - 2 * reserve), kOf(usableW - reserve), kMax)
+        : splitEven(usedCols, kMax);
+      const rowGroups = reserve
+        ? splitWithEdges(usedRows, nOf(usableH - 2 * reserve), nOf(usableH - reserve), nMax)
+        : splitEven(usedRows, nMax);
+
+      rowGroups.forEach((rows, gj) => {
+        colGroups.forEach((cols, gi) => {
+          const id = `p${gi}_${gj}`;
+          const tiles: Vec2[][] = [];
+          for (const c of cols)
+            for (const r of rows) {
+              const [x, y] = cellCenter(c, r, grid);
+              tiles.push(tile(x, y));
+              panelOf.set(cellKey(c, r), id);
+            }
+          const union = s.t(s.t(s.t(new CS(tiles, 'Positive')).offset(0.005, 'Miter')).offset(-0.005, 'Miter'));
+          const region = s.t(union.intersect(gridRegion));
+          if (region.area() < 30) return;
+          regions.set(id, region);
+          const polys = polysOf(region);
+          const row = rowGroups.length - 1 - gj;
+          pieces.push({
+            id,
+            kind: 'panel',
+            label: `${String.fromCharCode(65 + (row % 26))}${gi + 1}`,
+            polys,
+            bbox: bboxOf(polys),
+            printAngle: null,
+            printSize: [0, 0],
+            holes: 0,
+            volume: 0,
+            screws: [],
+            anchor: centroid(polys),
+            anchorAngle: 0,
+            stage: 0,
+          });
         });
       });
-    });
+      if (!integrated) break;
+      const trialBand = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
+      const owned = integrateFrame(K, s, outer, inner, trialBand, frame.width, pieces);
+      const fits = pieces.every((pc) => {
+        const part = owned.get(pc.id);
+        const fp = part ? s.t(regions.get(pc.id)!.add(part)) : regions.get(pc.id)!;
+        return fitOnBed(polysOf(fp), usableW, usableH).angle !== null;
+      });
+      if (fits) break;
+      reserve += frame.width * 0.75 + 10;
+    }
     for (const cell of cells) cell.panel = panelOf.get(cellKey(cell.c, cell.r)) ?? '';
 
     // Screw cells (legacy mounting mode).
@@ -272,6 +296,57 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     }
   }
 
+  const frontZ = DEPTH + (hasFrame ? frame.proud : 0);
+  const frameBands = new Map<string, CrossSection>();
+  if (integrated && !inner.isEmpty()) {
+    const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
+    const panels = pieces.filter((p) => p.kind === 'panel');
+    const owned = integrateFrame(K, s, outer, inner, band, frame.width, panels);
+    const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
+    const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
+    for (const p of panels) {
+      const part = owned.get(p.id);
+      if (!part || part.isEmpty()) continue;
+      frameBands.set(p.id, part);
+      // Grow the cell part a hair so it fuses with its frame part along slanted edges.
+      const footprint = s.t(s.t(s.t(regions.get(p.id)!.offset(0.01, 'Miter')).intersect(outer)).add(part));
+      regions.set(p.id, footprint);
+      const bandPolys = polysOf(part);
+      p.polys = polysOf(footprint);
+      p.bbox = bboxOf(p.polys);
+      p.framePolys = bandPolys;
+      if (screwOk) p.screws = frameScrews(mid, bandPolys, cuts, mount.headDiameter);
+      const a = frameAnchor(mid, bandPolys);
+      p.frameAnchor = a.p;
+      p.frameAnchorAngle = a.angle;
+      p.volume += (part.area() * frontZ) / 1000;
+    }
+  }
+  // Panels must be one piece each: stray bits (tile corners at slanted edges,
+  // frame pieces that ended up apart from their panel) join a touching panel.
+  consolidatePanels(K, s, pieces.filter((p) => p.kind === 'panel'), regions, cells, [usableW, usableH]);
+  for (let i = pieces.length - 1; i >= 0; i--) if (pieces[i].kind === 'panel' && !regions.has(pieces[i].id)) pieces.splice(i, 1);
+  if (integrated) {
+    const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
+    const midLine = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
+    for (const p of pieces) {
+      if (p.kind !== 'panel') continue;
+      const part = s.t(regions.get(p.id)!.intersect(band));
+      if (part.area() > 1) {
+        frameBands.set(p.id, part);
+        p.framePolys = polysOf(part);
+        const a = frameAnchor(midLine, p.framePolys);
+        p.frameAnchor = a.p;
+        p.frameAnchorAngle = a.angle;
+        p.screws = frame.screws && frame.width >= mount.headDiameter + 3 ? frameScrews(midLine, p.framePolys, cuts, mount.headDiameter) : [];
+      } else {
+        p.screws = [];
+        frameBands.delete(p.id);
+        delete p.framePolys;
+      }
+    }
+  }
+
   // ---- Connectors ----------------------------------------------------------
   const connectors =
     mount.mode === 'connectors'
@@ -291,32 +366,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   }
 
   // ---- Frame pieces --------------------------------------------------------
-  const frontZ = DEPTH + (hasFrame ? frame.proud : 0);
   const frameParts = new Map<string, FrameParts>();
-  const frameBands = new Map<string, CrossSection>();
-  if (integrated && !inner.isEmpty()) {
-    const band = s.t(s.t(outer.subtract(inner)).subtract(allCuts));
-    const panels = pieces.filter((p) => p.kind === 'panel');
-    const owned = integrateFrame(K, s, outer, inner, band, frame.width, panels);
-    const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
-    const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
-    for (const p of panels) {
-      const part = owned.get(p.id);
-      if (!part || part.isEmpty()) continue;
-      frameBands.set(p.id, part);
-      const footprint = s.t(regions.get(p.id)!.add(part));
-      regions.set(p.id, footprint);
-      const bandPolys = polysOf(part);
-      p.polys = polysOf(footprint);
-      p.bbox = bboxOf(p.polys);
-      p.framePolys = bandPolys;
-      if (screwOk) p.screws = frameScrews(mid, bandPolys, cuts, mount.headDiameter);
-      const a = frameAnchor(mid, bandPolys);
-      p.frameAnchor = a.p;
-      p.frameAnchorAngle = a.angle;
-      p.volume += (part.area() * frontZ) / 1000;
-    }
-  }
   if (hasFrame && !integrated && !inner.isEmpty()) {
     const band = s.t(s.t(outer.subtract(lipInner)).subtract(allCuts));
     const lapLen = frame.joint === 'lap' ? Math.max(10, frame.jointLength) : 0;
@@ -344,7 +394,8 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     (split?.pieces ?? []).forEach((region, i) => {
       const id = `f${i}`;
       const pp = parts[i];
-      for (const lap of [...pp.high, ...pp.low]) pp.core = s.t(pp.core.subtract(lap));
+      // Shrink the lap a hair when cutting it out so core and lap overlap and fuse (slanted edges are not exact).
+      for (const lap of [...pp.high, ...pp.low]) pp.core = s.t(pp.core.subtract(s.t(lap.offset(-0.02, 'Miter'))));
       const footprint = laps.length ? s.t(CS.union([pp.core, ...pp.high, ...pp.low])) : region;
       frameParts.set(id, pp);
       regions.set(id, footprint);
@@ -614,63 +665,55 @@ export function bandCutter(K: Kernel, s: Scope, outer: CrossSection, band: Cross
   const outerPolys = polysOf(outer);
   const main = outerPolys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a));
   const rg = ring(main);
-  const ob = outer.bounds();
-  const C: Vec2 = [(ob.min[0] + ob.max[0]) / 2, (ob.min[1] + ob.max[1]) / 2];
-  const BIG = 1e5;
+  const KERF = 0.05;
 
+  // A thin slot square to the outline at each cut, reaching just across the band.
+  // Works for any outline, convex or not: the slot only touches the band locally.
+  const slot = (c: Cut) => {
+    const n: Vec2 = [-c.t[1], c.t[0]];
+    const pt = (a: number, b2: number): Vec2 => [c.p[0] + c.t[0] * a + n[0] * b2, c.p[1] + c.t[1] * a + n[1] * b2];
+    return s.t(new CS([ccw([pt(-KERF / 2, -5), pt(KERF / 2, -5), pt(KERF / 2, width + 5), pt(-KERF / 2, width + 5)])]));
+  };
 
-  const halfPlane = (p: Vec2, t: Vec2, ahead: boolean) => {
-    const n: Vec2 = [-t[1], t[0]];
-    const dir = ahead ? 1 : -1;
-    const pts: Vec2[] = [
-      [p[0] - n[0] * BIG, p[1] - n[1] * BIG],
-      [p[0] - n[0] * BIG + t[0] * BIG * dir, p[1] - n[1] * BIG + t[1] * BIG * dir],
-      [p[0] + n[0] * BIG + t[0] * BIG * dir, p[1] + n[1] * BIG + t[1] * BIG * dir],
-      [p[0] + n[0] * BIG, p[1] + n[1] * BIG],
-    ];
-    return s.t(new CS([ccw(pts)]));
-  };
-  const wedge = (a0: number, a1: number) => {
-    while (a1 <= a0) a1 += 2 * Math.PI;
-    const pts: Vec2[] = [C];
-    const steps = Math.max(2, Math.ceil((a1 - a0) / 0.3));
-    for (let i = 0; i <= steps; i++) {
-      const a = a0 + ((a1 - a0) * i) / steps;
-      pts.push([C[0] + BIG * Math.cos(a), C[1] + BIG * Math.sin(a)]);
-    }
-    return s.t(new CS([ccw(pts)]));
-  };
-  const angleOf = (p: Vec2) => Math.atan2(p[1] - C[1], p[0] - C[0]);
-
-  const build = (cuts: Cut[], radial: boolean) => {
-    const m = cuts.length;
-    const out: CrossSection[] = [];
-    for (let j = 0; j < m; j++) {
-      const a = cuts[j],
-        b2 = cuts[(j + 1) % m];
-      const span = (((b2.s - a.s) % rg.length) + rg.length) % rg.length;
-      const delta = Math.min(0.35, ((span / rg.length) * Math.PI * 2) / 3) + Math.atan2(width * 1.5, 50);
-      let piece: CrossSection;
-      if (radial) {
-        piece = s.t(band.intersect(wedge(angleOf(a.p), angleOf(b2.p))));
-      } else {
-        const w = wedge(angleOf(a.p) - delta, angleOf(b2.p) + delta);
-        piece = s.t(
-          s.t(s.t(band.intersect(w)).intersect(halfPlane(a.p, a.t, true))).intersect(halfPlane(b2.p, b2.t, false)),
-        );
-      }
-      out.push(piece);
-    }
-    return out;
-  };
-  const bandArea = band.area();
-  const cut = (cuts: Cut[]) => {
+  const cut = (cuts: Cut[]): CrossSection[] => {
     cuts.sort((a, b) => a.s - b.s);
-    let pieces = build(cuts, false);
-    const total = pieces.reduce((a, p) => a + p.area(), 0);
-    const broken = pieces.some((p) => p.isEmpty() || p.decompose().filter((d) => (s.t(d), d.area() > 1)).length > 1);
-    if (Math.abs(total - bandArea) > bandArea * 0.002 || broken) pieces = build(cuts, true);
-    return pieces;
+    const m = cuts.length;
+    if (m < 2) return [band];
+    const parts = s.t(band.subtract(s.t(CS.union(cuts.map(slot))))).decompose().map((d) => s.t(d));
+    const polys = parts.map((p) => polysOf(p));
+    // Probe the middle of each stretch between cuts to find its piece.
+    const owner = new Array<number>(parts.length).fill(-1);
+    const probes: Vec2[] = [];
+    for (let j = 0; j < m; j++) {
+      const a = cuts[j].s,
+        b2 = cuts[(j + 1) % m].s;
+      const span = (((b2 - a) % rg.length) + rg.length) % rg.length;
+      const { p, t } = pointAt(rg, a + span / 2);
+      const q: Vec2 = [p[0] - t[1] * (width / 2), p[1] + t[0] * (width / 2)];
+      probes.push(q);
+      polys.forEach((pp, i) => {
+        if (owner[i] < 0 && pointInPolys(q[0], q[1], pp)) owner[i] = j;
+      });
+    }
+    // Leftovers (e.g. bits beside a cutout) join the stretch whose probe is closest.
+    polys.forEach((pp, i) => {
+      if (owner[i] >= 0) return;
+      const [cx, cy] = centroid(pp);
+      let bj = 0,
+        bd = Infinity;
+      probes.forEach((q, j) => {
+        const d = (q[0] - cx) ** 2 + (q[1] - cy) ** 2;
+        if (d < bd) {
+          bd = d;
+          bj = j;
+        }
+      });
+      owner[i] = bj;
+    });
+    return Array.from({ length: m }, (_, j) => {
+      const mine = parts.filter((_, i) => owner[i] === j);
+      return mine.length ? s.t(CS.union(mine)) : s.t(new CS([[]]));
+    });
   };
   return { rg, cut };
 }
@@ -825,13 +868,47 @@ function integrateFrame(
   const pts: Vec2[] = [];
   for (let x = 0; x < ri.length; x += step) {
     const { p, t } = pointAt(ri, x);
-    const q: Vec2 = [p[0] - t[1] * 0.8, p[1] + t[0] * 0.8];
+    // Probe well inside the edge (about a cell deep) so the zigzag of the seams right at
+    // the edge does not flip the owner back and forth; fall back to a shallow probe.
     pts.push(p);
-    owners.push(panels.find((pc) => pointInPolys(q[0], q[1], pc.polys))?.id ?? null);
+    // Majority along a short ray into the panels: local enough to follow the
+    // panel actually behind this stretch, deep enough to ignore the zigzag.
+    const votes = new Map<string, number>();
+    for (const depth of [0.8, 3, 6, 9, 12, 15, 18]) {
+      const q: Vec2 = [p[0] - t[1] * depth, p[1] + t[0] * depth];
+      const id = panels.find((pc) => pointInPolys(q[0], q[1], pc.polys))?.id;
+      if (id) votes.set(id, (votes.get(id) ?? 0) + 1);
+    }
+    let id: string | null = null;
+    for (const [k, v] of votes) if (!id || v > votes.get(id)!) id = k;
+    owners.push(id);
   }
   // Fill gaps (cutouts at the edge) from the previous owner.
   let last = owners.find((o) => o) ?? null;
   for (let i = 0; i < owners.length; i++) owners[i] = owners[i] ?? last, (last = owners[i]);
+  // Along slanted edges the zigzag seam flips owners back and forth; fold
+  // stretches shorter than minRun into the longer neighbouring stretch.
+  const minRun = Math.max(40, width * 2) / step;
+  for (let pass = 0; pass < 20; pass++) {
+    const runs: { id: string | null; start: number; len: number }[] = [];
+    owners.forEach((o, i) => {
+      const r = runs[runs.length - 1];
+      if (r && r.id === o) r.len++;
+      else runs.push({ id: o, start: i, len: 1 });
+    });
+    if (runs.length > 1 && runs[0].id === runs[runs.length - 1].id) {
+      const tail = runs.pop()!;
+      runs[0].start = tail.start;
+      runs[0].len += tail.len;
+    }
+    const short = runs.filter((r) => r.len < minRun).sort((a, b) => a.len - b.len)[0];
+    if (!short || runs.length <= 1) break;
+    const k = runs.indexOf(short);
+    const prev = runs[(k - 1 + runs.length) % runs.length],
+      next = runs[(k + 1) % runs.length];
+    const into = prev.len >= next.len ? prev.id : next.id;
+    for (let j = 0; j < short.len; j++) owners[(short.start + j) % owners.length] = into;
+  }
   const ids = new Set(owners.filter(Boolean));
   if (ids.size <= 1) {
     if (last) out.set(last, band);
@@ -878,6 +955,83 @@ function integrateFrame(
     out.set(id, out.has(id) ? s.t(out.get(id)!.add(piece)) : piece);
   }
   return out;
+}
+
+/** Merges disconnected bits of panels into the panel they touch most. */
+function consolidatePanels(
+  K: Kernel,
+  s: Scope,
+  panels: LayoutPiece[],
+  regions: Map<string, CrossSection>,
+  cells: LayoutCell[],
+  bed: [number, number],
+) {
+  const fits = (cs: CrossSection) => fitOnBed(polysOf(cs), bed[0], bed[1]).angle !== null;
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    for (const p of panels) {
+      const reg = regions.get(p.id);
+      if (!reg) continue;
+      const parts = reg.decompose().map((d) => s.t(d)).filter((d) => d.area() > 0.01);
+      if (parts.length <= 1) continue;
+      parts.sort((x, y) => y.area() - x.area());
+      let keep = parts[0];
+      for (const bit of parts.slice(1)) {
+        // The neighbour sharing the longest boundary with this bit.
+        const grown = s.t(bit.offset(0.3, 'Miter'));
+        let best: LayoutPiece | null = null,
+          bestA = 0;
+        for (const q of panels) {
+          if (q === p) continue;
+          const a = s.t(grown.intersect(regions.get(q.id)!)).area();
+          if (a > bestA) {
+            bestA = a;
+            best = q;
+          }
+        }
+        const bitPolys = polysOf(bit);
+        if (!best || bestA < 0.05) {
+          keep = s.t(keep.add(bit));
+          continue;
+        }
+        regions.set(best.id, s.t(s.t(regions.get(best.id)!.offset(0.01, 'Miter')).add(bit)));
+        for (const c of cells) if (c.panel === p.id && pointInPolys(c.x, c.y, bitPolys)) c.panel = best.id;
+        moved = true;
+      }
+      regions.set(p.id, keep);
+    }
+    if (!moved) break;
+  }
+  // Panels too small to be worth printing on their own (a few cells' worth) join a neighbour.
+  const tiny = 3 * (Math.sqrt(3) / 2) * PITCH_Y * PITCH_Y;
+  for (const p of [...panels]) {
+    const reg = regions.get(p.id);
+    if (!reg || reg.area() >= tiny) continue;
+    const grown = s.t(reg.offset(0.3, 'Miter'));
+    let best: LayoutPiece | null = null,
+      bestA = 0;
+    for (const q of panels) {
+      if (q === p || !regions.has(q.id)) continue;
+      const a = s.t(grown.intersect(regions.get(q.id)!)).area();
+      // Only merge into a neighbour that still fits the bed afterwards.
+      if (a > bestA && fits(s.t(regions.get(q.id)!.add(reg)))) {
+        bestA = a;
+        best = q;
+      }
+    }
+    if (!best || bestA < 0.05) continue;
+    regions.set(best.id, s.t(regions.get(best.id)!.add(reg)));
+    regions.delete(p.id);
+    for (const c of cells) if (c.panel === p.id) c.panel = best.id;
+    panels.splice(panels.indexOf(p), 1);
+  }
+  for (const p of panels) {
+    const reg = regions.get(p.id)!;
+    p.polys = polysOf(reg);
+    p.bbox = bboxOf(p.polys);
+    p.anchor = centroid(p.polys);
+  }
+  void K;
 }
 
 /** Contiguous stretches of the frame mid-line that lie inside a piece. */

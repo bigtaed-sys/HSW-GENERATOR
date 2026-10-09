@@ -13,7 +13,7 @@
 ### Возможности
 
 - **Вся стена сразу.** 2D-редактор с зумом и панорамой и 3D-превью с тенями и разнесённым видом. Аксессуары можно ставить и перетаскивать в обоих.
-- **Формы:** прямоугольник со скруглёнными углами, шестиугольник, эллипс и классический «край по сотам».
+- **Формы:** прямоугольник со скруглёнными углами, шестиугольник, эллипс, классический «край по сотам» и свой контур. Для своего контура есть шаблоны: Г, П, Т, трапеция, лесенка, арка. Углы правятся прямо на холсте.
 - **Рамка:** отдельными частями или заодно с крайними панелями. Стили «Классика», «Ступенька», «С канавкой», «Багет», «Валик», «Выкружка». Есть канал под LED-ленту: спереди или ореолом сзади. новые стили добавляются в реестр `src/geometry/frames/`. Есть выступ над сотами, губа, которая прижимает края панелей к стене, и соединения внахлёст между частями рамки (каждый нахлёст стягивается одним саморезом). Рамка автоматически режется на части под стол принтера; разрезы на прямых участках ставятся симметрично.
 - **Ячейки у края:** только целые или обрезанные по контуру. Минимальная стенка у края, сдвиг и смена шахматного порядка сетки.
 - **Автонарезка на панели** под выбранный принтер (пресеты Bambu, Prusa, Creality, Voron или свой размер). Швы идут по середине стенок между ячейками. Панели подписаны (A1, B2, …) и при экспорте разворачиваются так, чтобы влезть на стол.
@@ -50,7 +50,7 @@ Design the whole wall instead of one panel at a time. Set the shape, size, frame
 ### Features
 
 - **Whole-wall editor.** 2D editor with zoom and pan, plus a 3D preview with shadows and an exploded view. Accessories can be placed and dragged in both.
-- **Shapes:** rounded rectangle, hexagon, ellipse and the classic honeycomb edge.
+- **Shapes:** rounded rectangle, hexagon, ellipse, the classic honeycomb edge and a custom outline. The custom outline has templates (L, U, T, trapezoid, stairs, arch), and its corners are edited right on the canvas.
 - **Frames:** printed as separate parts or as part of the edge panels. Styles: Classic, Stepped, Grooved, Bevel, Bead and Cove. An optional LED strip channel goes in the front or at the back for a halo. new styles are added in the registry in `src/geometry/frames/`. The frame can stand out over the cells, has a lip that holds the panel edges against the wall, and has half-lap joints between its parts, each joint held by one screw. The frame is split automatically to fit the bed, with symmetric cuts on straight edges.
 - **Edge cells:** whole cells only, or cells cut along the outline. Set the minimum edge wall, shift the grid or flip the column stagger.
 - **Automatic panel splitting** for your printer (Bambu, Prusa, Creality and Voron presets, or a custom bed). Seams run along the middle of the walls between cells. Panels are labelled (A1, B2, …) and rotated on export so they fit the bed.

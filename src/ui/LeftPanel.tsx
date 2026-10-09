@@ -6,6 +6,7 @@ import { PRINTERS } from '../model/defaults';
 import { useGeo } from '../model/geo';
 import { uid, useStore } from '../model/store';
 import type { WallShape } from '../model/types';
+import { OUTLINE_PRESETS, presetPoints, scalePoints } from '../model/outlines';
 import { FRAME_STYLES, frameStyle, frameStyleParams } from '../geometry/frames/styles';
 import { NumberInput, ParamControl, Section, Segmented, Slider, Swatches, Toggle, useBind } from './controls';
 
@@ -51,6 +52,7 @@ function ShapeIcon({ shape }: { shape: WallShape }) {
       {shape === 'rect' && <rect x="3" y="3" width="38" height="24" rx="4" {...common} />}
       {shape === 'hexagon' && <path d="M3 15 L11 3 H33 L41 15 L33 27 H11 Z" strokeLinejoin="round" {...common} />}
       {shape === 'ellipse' && <ellipse cx="22" cy="15" rx="19" ry="12" {...common} />}
+      {shape === 'custom' && <path d="M3 27 V3 H22 V14 H41 V27 Z" strokeLinejoin="round" {...common} />}
       {shape === 'honeycomb' && (
         <path
           d="M4 9 L8 3 H14 L18 9 L14 15 L18 21 L14 27 H8 L4 21 L8 15 Z M18 9 H24 L28 3 H34 L38 9 L34 15 L38 21 L34 27 H28 L24 21 H18"
@@ -72,7 +74,10 @@ function WallTab() {
     { id: 'hexagon', label: 'shapeHexagon' },
     { id: 'ellipse', label: 'shapeEllipse' },
     { id: 'honeycomb', label: 'shapeHoneycomb' },
+    { id: 'custom', label: 'shapeCustom' },
   ];
+  const lang = useStore((s) => s.lang);
+  const setUi = useStore((s) => s.setUi);
   const presets: [number, number][] = [
     [500, 400],
     [800, 500],
@@ -88,7 +93,13 @@ function WallTab() {
             <button
               key={s.id}
               className={`shape-card ${wall.shape === s.id ? 'on' : ''}`}
-              onClick={() => update((p) => void (p.wall.shape = s.id))}
+              onClick={() => {
+                update((p) => {
+                  p.wall.shape = s.id;
+                  if (s.id === 'custom' && (p.wall.points?.length ?? 0) < 3) p.wall.points = presetPoints('rect', p.wall.width, p.wall.height);
+                });
+                if (s.id === 'custom') setUi({ tool: 'outline', placing: null });
+              }}
             >
               <ShapeIcon shape={s.id} />
               {t(s.label)}
@@ -97,9 +108,50 @@ function WallTab() {
         </div>
         {wall.shape === 'honeycomb' && <p className="hint">{t('honeycombHint')}</p>}
       </Section>
+      {wall.shape === 'custom' && (
+        <Section title={t('outlineTemplates')}>
+          <div className="chips">
+            {OUTLINE_PRESETS.map((o) => (
+              <button
+                key={o.id}
+                className="chip"
+                onClick={() => {
+                  update((p) => void (p.wall.points = presetPoints(o.id, p.wall.width, p.wall.height)));
+                  setUi({ tool: 'outline', placing: null });
+                }}
+              >
+                {o.name[lang]}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{t('outlineHint')}</p>
+        </Section>
+      )}
       <Section title={t('width') + ' × ' + t('height')}>
-        <Slider label={t('width')} value={wall.width} min={150} max={3000} step={5} inputMax={6000} onChange={bind((p, v) => (p.wall.width = v))} />
-        <Slider label={t('height')} value={wall.height} min={150} max={2500} step={5} inputMax={6000} onChange={bind((p, v) => (p.wall.height = v))} />
+        <Slider
+          label={t('width')}
+          value={wall.width}
+          min={150}
+          max={3000}
+          step={5}
+          inputMax={6000}
+          onChange={bind((p, v) => {
+            p.wall.width = v;
+            if (p.wall.shape === 'custom' && p.wall.points.length >= 3) p.wall.points = scalePoints(p.wall.points, v, p.wall.height);
+          })}
+        />
+        <Slider
+          label={t('height')}
+          value={wall.height}
+          min={150}
+          max={2500}
+          step={5}
+          inputMax={6000}
+          onChange={bind((p, v) => {
+            p.wall.height = v;
+            if (p.wall.shape === 'custom' && p.wall.points.length >= 3) p.wall.points = scalePoints(p.wall.points, p.wall.width, v);
+          })}
+        />
         {wall.shape !== 'honeycomb' && (
           <Slider
             label={t('cornerRadius')}
@@ -120,6 +172,7 @@ function WallTab() {
                 update((p) => {
                   p.wall.width = w;
                   p.wall.height = h;
+                  if (p.wall.shape === 'custom' && p.wall.points.length >= 3) p.wall.points = scalePoints(p.wall.points, w, h);
                 })
               }
             >

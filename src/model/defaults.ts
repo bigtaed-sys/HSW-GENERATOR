@@ -39,7 +39,7 @@ export function defaultProject(): Project {
   return {
     version: 1,
     name: 'My HSW wall',
-    wall: { shape: 'rect', width: 900, height: 600, cornerRadius: 24 },
+    wall: { shape: 'rect', width: 900, height: 600, cornerRadius: 24, points: [] },
     frame: {
       width: 18,
       mode: 'separate',

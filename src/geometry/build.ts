@@ -3,7 +3,7 @@ import { DEPTH, HOLE_PROFILE } from './constants';
 import { Scope, type CrossSection, type Kernel, type Manifold } from './kernel';
 import { hexagon } from './lattice';
 import { textOutline, textWidth } from './text';
-import { buildFrameStyle } from './frames/build';
+import { buildFrameStyle, isConvex } from './frames/build';
 import { frameStyleParams } from './frames/styles';
 import { roundedRect, type LayoutInternal } from './layout';
 import type { MeshData } from './layoutTypes';
@@ -40,14 +40,24 @@ export function mountTool(K: Kernel, s: Scope, project: Project, hole: Manifold)
   return s.t(Manifold.union([s.t(hole.subtract(slab)), shaft, cone]));
 }
 
-/** Straight through-cut with a chamfered front edge (outline must be convex). */
+/** Straight through-cut with a chamfered front edge. */
 function chamferedCut(K: Kernel, s: Scope, cs: CrossSection, frontZ: number, ch: number): Manifold {
   const { Manifold } = K;
   const body = s.t(s.t(cs.extrude(frontZ + 2)).translate([0, 0, -1]));
   if (ch <= 0.05) return body;
-  const top = s.t(s.t(s.t(cs.offset(ch, 'Round', 2, 32)).extrude(1)).translate([0, 0, frontZ]));
-  const mid = s.t(s.t(cs.extrude(0.001)).translate([0, 0, frontZ - ch]));
-  return s.t(Manifold.union([body, s.t(Manifold.hull([mid, top]))]));
+  if (isConvex(cs)) {
+    const top = s.t(s.t(s.t(cs.offset(ch, 'Round', 2, 32)).extrude(1)).translate([0, 0, frontZ]));
+    const mid = s.t(s.t(cs.extrude(0.001)).translate([0, 0, frontZ - ch]));
+    return s.t(Manifold.union([body, s.t(Manifold.hull([mid, top]))]));
+  }
+  // Non-convex outline: the chamfer as thin widening steps.
+  const steps = Math.max(2, Math.ceil(ch / 0.2));
+  const parts: Manifold[] = [body];
+  for (let i = 1; i <= steps; i++) {
+    const u = i / steps;
+    parts.push(s.t(s.t(s.t(cs.offset(ch * u, 'Round', 2, 32)).extrude(ch * (1 - u) + 1.5)).translate([0, 0, frontZ - ch * (1 - u)])));
+  }
+  return s.t(Manifold.union(parts));
 }
 
 function cutoutTools(K: Kernel, s: Scope, cuts: Cutout[], frontZ: number): Manifold[] {
@@ -145,7 +155,8 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
     const piece = L.layout.pieces.find((p) => p.id === id)!;
     if (piece.kind === 'panel') {
       const band = L.frameBands.get(id);
-      let body = s.t((band ? s.t(region.subtract(band)) : region).extrude(DEPTH));
+      // With an integrated frame the cell part reaches 0.05 mm into the frame so the two fuse.
+      let body = s.t((band ? s.t(region.subtract(s.t(band.offset(-0.05, 'Miter')))) : region).extrude(DEPTH));
       const hole = cache.get('hole')!;
       const mount = cache.get('mount')!;
       const cells = L.layout.cells.filter((c) => c.panel === id && c.kind !== 'solid');
