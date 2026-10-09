@@ -313,6 +313,8 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
       const hollow = s.t(s.t(L.pattern.hollow!.extrude(top + 1)).translate([0, 0, -1]));
       const grooves = s.t(s.t(L.pattern.cut.extrude(L.frontZ + 4 - floor)).translate([0, 0, floor]));
       const tools = [hollow, grooves];
+      // Pockets for the seam patches: the groove floor along each seam is left to the patch.
+      for (const seat of L.seats) tools.push(s.t(s.t(seat.extrude(floor - top + 1)).translate([0, 0, top - 1])));
       // Notch for the cable through the outer wall at the lowest point.
       const pts = L.outer.toPolygons().flat();
       const low = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);

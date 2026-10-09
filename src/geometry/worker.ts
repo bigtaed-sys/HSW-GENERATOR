@@ -211,7 +211,8 @@ async function handle(msg: WorkerRequest) {
       }
       // Seam patches go with the frame, or with the panels when the panels carry the frame.
       if ((include.frame || (project.frame.mode === 'integrated' && include.panels)) && L.plates.length) {
-        const thick = Math.max(0.2, frameStyleParams(project.frame).patch ?? 0.6);
+        // As thick as the groove floor: the patch is the floor across the seam.
+        const thick = Math.max(0.2, frameStyleParams(project.frame).skin ?? 0.6);
         L.plates.forEach((plate, i) => {
           const s = new Scope();
           try {

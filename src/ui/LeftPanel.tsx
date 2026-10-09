@@ -339,7 +339,7 @@ function FrameTab() {
               onChange={bind((p, v) => (p.frame.innerChamfer = v))}
             />
           </Section>
-          {frame.mode === 'separate' && frame.style === 'lit' && (
+          {frame.style === 'lit' && (
             <Section title={t('frameJoints')}>
               <p className="hint">{t('jointsLitHint')}</p>
             </Section>
