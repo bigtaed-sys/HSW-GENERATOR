@@ -290,7 +290,13 @@ function FrameTab() {
               onChange={bind((p, v) => (p.frame.innerChamfer = v))}
             />
           </Section>
-          {frame.mode === 'separate' && <Section title={t('frameJoints')}>
+          {frame.mode === 'separate' && frame.style === 'lit' && (
+            <Section title={t('frameJoints')}>
+              <Toggle label={t('frameScrews')} checked={frame.screws} onChange={(v) => update((p) => void (p.frame.screws = v))} />
+              <p className="hint">{t('jointsLitHint')}</p>
+            </Section>
+          )}
+          {frame.mode === 'separate' && frame.style !== 'lit' && <Section title={t('frameJoints')}>
             <Segmented
               value={frame.joint}
               onChange={(v) => update((p) => void (p.frame.joint = v))}

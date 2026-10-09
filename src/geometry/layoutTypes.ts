@@ -56,6 +56,8 @@ export interface Layout {
   inner: Vec2[][];
   /** Pockets of the decorative frame pattern. */
   pattern?: Vec2[][];
+  /** Backlit cells: thin patches glued behind the seams between frame parts. */
+  plates?: { id: string; label: string; polys: Vec2[][] }[];
   cells: LayoutCell[];
   pieces: LayoutPiece[];
   connectors: LayoutConnector[];

@@ -1,4 +1,4 @@
-import type { Cutout, Project } from '../model/types';
+import type { Cutout, GridSettings, Project } from '../model/types';
 import { cellKey } from '../model/types';
 import { DEPTH, HOLE_FRONT, HOLE_PROFILE, PITCH_X, PITCH_Y, TILE_R } from './constants';
 import {
@@ -12,7 +12,7 @@ import {
   type CrossSection,
   type Kernel,
 } from './kernel';
-import { cellCenter, hexagon, latticeRange, tile, type Vec2 } from './lattice';
+import { cellAt, cellCenter, hexagon, latticeRange, tile, type Vec2 } from './lattice';
 import { placeConnectors } from './connectors';
 import { frameStyleParams } from './frames/styles';
 import type { Layout, LayoutCell, LayoutPiece } from './layoutTypes';
@@ -52,6 +52,8 @@ export interface LayoutInternal {
   frameBands: Map<string, CrossSection>;
   /** Pockets of the decorative frame pattern (2D), cut into the frame front. */
   pattern: FramePattern | null;
+  /** Backlit cells: patches behind the frame seams. */
+  plates: CrossSection[];
 }
 
 /** A frame piece: full-height core plus half-height lap ends lying on top of (high) or under (low) its neighbours. */
@@ -370,11 +372,15 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
 
   // ---- Frame pieces --------------------------------------------------------
   const frameParts = new Map<string, FrameParts>();
+  const seams: { c: FrameCut; width: number }[] = [];
   if (hasFrame && !integrated && !inner.isEmpty()) {
     const band = s.t(s.t(outer.subtract(lipInner)).subtract(allCuts));
-    const lapLen = frame.joint === 'lap' ? Math.max(10, frame.jointLength) : 0;
+    // Backlit cells: parts meet along the grooves, with a patch behind each seam instead of laps.
+    const lit = frame.style === 'lit';
+    const lapLen = frame.joint === 'lap' && !lit ? Math.max(10, frame.jointLength) : 0;
     const bandW = frame.width + lip;
-    const split = splitFrame(K, s, outer, band, bandW, usableW, usableH, lapLen);
+    const split = splitFrame(K, s, outer, band, bandW, usableW, usableH, lapLen, lit ? grid : undefined);
+    if (lit && split && split.cuts.length > 1) seams.push(...split.cuts.map((c) => ({ c, width: bandW })));
     if (!split) warnings.push('warnFrameSplit');
     const mid = polysOf(s.t(outer.offset(-frame.width / 2, 'Round', 2, 96)));
     const screwOk = frame.screws && frame.width >= mount.headDiameter + 3;
@@ -454,15 +460,43 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   }
 
   // ---- Decorative pattern on the frame front -----------------------------
+  if (hasFrame && frame.style === 'lit') {
+    // Backlit cells: move each frame screw to the middle of the nearest tile of the pattern.
+    for (const p of pieces) {
+      const own = p.kind === 'frame' ? p.polys : p.framePolys;
+      if (!own) continue;
+      p.screws = p.screws.map(([x, y]) => {
+        const { c, r } = cellAt(x, y, grid);
+        const q = cellCenter(c, r, grid);
+        const room = mount.headDiameter / 2 + 2;
+        const ok = Math.hypot(q[0] - x, q[1] - y) < PITCH_Y * 0.7 && [[0, 0], [room, 0], [-room, 0], [0, room], [0, -room]].every(([dx, dy]) => pointInPolys(q[0] + dx, q[1] + dy, own));
+        return ok ? q : [x, y];
+      });
+    }
+  }
   const pattern = hasFrame && !inner.isEmpty() && (frame.style === 'cells' || frame.style === 'lit')
     ? framePattern(K, s, project, outer, inner, lipInner, cuts, cutCS, pieces.flatMap((p) => p.screws), [...frameParts.values()].flatMap((f) => [...f.high, ...f.low]))
     : null;
+
+  // Patches glued behind the seams of a Backlit cells frame, under the front plate.
+  const plates: CrossSection[] = [];
+  if (pattern?.hollow) {
+    const room = s.t(pattern.hollow.offset(-0.3, 'Miter'));
+    const w = Math.max(6, frameStyleParams(frame).patchWidth ?? 16);
+    for (const { c, width } of seams) {
+      const seam = seamPath(K, s, c, width, grid, 0.05);
+      if (!seam) continue;
+      const plate = s.t(s.t(seam.offset(w / 2, 'Miter')).intersect(room));
+      if (plate.area() > 20) plates.push(plate);
+    }
+  }
 
   const ob = outer.bounds();
   const layout: Layout = {
     outer: polysOf(outer),
     inner: hasFrame ? polysOf(inner) : [],
     pattern: pattern ? polysOf(pattern.cut) : undefined,
+    plates: plates.map((p, i) => ({ id: `j${i}`, label: `J${i + 1}`, polys: polysOf(p) })),
     cells,
     pieces,
     connectors,
@@ -479,7 +513,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       height: ob.max[1] - ob.min[1],
     },
   };
-  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands, pattern };
+  return { project, layout, scope: s, outer, inner, lipInner, lip, gridRegion, allowed, hasFrame, frontZ, cuts, regions, frameParts, frameBands, pattern, plates };
 }
 
 function centroid(polys: Vec2[][]): Vec2 {
@@ -669,7 +703,37 @@ function pointAt(rg: Ring, s: number): { p: Vec2; t: Vec2 } {
  * the given positions along the outline, with cuts square to the outline. Falls
  * back to radial cuts when that leaves stray bits.
  */
-export function bandCutter(K: Kernel, s: Scope, outer: CrossSection, band: CrossSection, width: number) {
+/**
+ * A cut across the frame band along the walls of the wall's honeycomb (the
+ * grooves of the Backlit cells style), as a thin zigzag strip of width `w`:
+ * the shared edge of the tiles on either side of the straight cut at `c`.
+ */
+export function seamPath(K: Kernel, s: Scope, c: FrameCut, width: number, grid: GridSettings, w: number): CrossSection | null {
+  const CS = K.CrossSection;
+  const n: Vec2 = [-c.t[1], c.t[0]];
+  const pt = (a: number, b: number): Vec2 => [c.p[0] + c.t[0] * a + n[0] * b, c.p[1] + c.t[1] * a + n[1] * b];
+  const box = [pt(-40, -20), pt(40, -20), pt(-40, width + 20), pt(40, width + 20)];
+  const xs = box.map((q) => q[0]),
+    ys = box.map((q) => q[1]);
+  const { c0, c1, r0, r1 } = latticeRange(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), grid);
+  const left: Vec2[][] = [],
+    right: Vec2[][] = [];
+  for (let i = c0; i <= c1; i++)
+    for (let j = r0; j <= r1; j++) {
+      const [x, y] = cellCenter(i, j, grid);
+      const along = (x - c.p[0]) * c.t[0] + (y - c.p[1]) * c.t[1];
+      const across = (x - c.p[0]) * n[0] + (y - c.p[1]) * n[1];
+      if (across < -10 || across > width + 10 || Math.abs(along) > PITCH_Y * 1.3) continue;
+      (along < 0 ? left : right).push(tile(x, y));
+    }
+  if (!left.length || !right.length) return null;
+  const a = s.t(s.t(new CS(left, 'Positive')).offset(w / 2, 'Miter'));
+  const b = s.t(s.t(new CS(right, 'Positive')).offset(w / 2, 'Miter'));
+  const seam = s.t(a.intersect(b));
+  return seam.isEmpty() ? null : seam;
+}
+
+export function bandCutter(K: Kernel, s: Scope, outer: CrossSection, band: CrossSection, width: number, grid?: GridSettings) {
   const CS = K.CrossSection;
   const outerPolys = polysOf(outer);
   const main = outerPolys.reduce((a, p) => (Math.abs(signedArea(p)) > Math.abs(signedArea(a)) ? p : a));
@@ -688,7 +752,8 @@ export function bandCutter(K: Kernel, s: Scope, outer: CrossSection, band: Cross
     cuts.sort((a, b) => a.s - b.s);
     const m = cuts.length;
     if (m < 2) return [band];
-    const parts = s.t(band.subtract(s.t(CS.union(cuts.map(slot))))).decompose().map((d) => s.t(d));
+    const tool = (c: Cut) => (grid ? seamPath(K, s, c, width, grid, KERF) ?? slot(c) : slot(c));
+    const parts = s.t(band.subtract(s.t(CS.union(cuts.map(tool))))).decompose().map((d) => s.t(d));
     const polys = parts.map((p) => polysOf(p));
     // Probe the middle of each stretch between cuts to find its piece.
     const owner = new Array<number>(parts.length).fill(-1);
@@ -736,12 +801,13 @@ function splitFrame(
   bedW: number,
   bedH: number,
   lapLen: number,
+  grid?: GridSettings,
 ): FrameSplit | null {
   const CS = K.CrossSection;
   const bandPolys = polysOf(band);
   if (fitOnBed(bandPolys, bedW, bedH).angle !== null) return { pieces: [band], cuts: [] };
 
-  const cutter = bandCutter(K, s, outer, band, width);
+  const cutter = bandCutter(K, s, outer, band, width, grid);
   const rg = cutter.rg;
   const distToCurved = (x: number) => {
     let d = Infinity;
@@ -1149,10 +1215,12 @@ function framePattern(
     // Inner wall: past the panel edge (and the ledge over it) by `wall`.
     const ledge = edge === inner ? 0 : 1.5;
     let zone = s.t(s.t(outer.offset(-wall, 'Round', 2, 96)).subtract(s.t(inner.offset(wall + ledge, 'Round', 2, 96))));
-    for (const [x, y] of screws) keepOut.push(s.t(s.t(CS.circle(mount.headDiameter / 2 + 1.6, 32)).translate([x, y])));
     for (const k of keepSolid) keepOut.push(s.t(k.offset(1, 'Miter')));
     if (keepOut.length) zone = s.t(zone.subtract(s.t(CS.union(keepOut))));
     if (zone.isEmpty()) return null;
+    // Screws sit in the middle of a tile, so the grooves run on; only the hollow keeps a boss around them.
+    const bosses = screws.map(([x, y]) => s.t(s.t(CS.circle(mount.headDiameter / 2 + 1.6, 32)).translate([x, y])));
+    const hollow = bosses.length ? s.t(zone.subtract(s.t(CS.union(bosses)))) : zone;
     const groove = Math.max(0.8, Math.min(pt.groove, 8));
     const b = zone.bounds();
     const { c0, c1, r0, r1 } = latticeRange(b.min[0], b.min[1], b.max[0], b.max[1], grid);
@@ -1163,7 +1231,7 @@ function framePattern(
         tiles.push(hexagon(PITCH_Y - groove, x, y));
       }
     const cut = s.t(zone.subtract(s.t(new CS(tiles, 'Positive'))));
-    return cut.isEmpty() ? null : { cut, hollow: zone };
+    return cut.isEmpty() ? null : { cut, hollow };
   }
   const size = Math.max(3, pt.cell);
   const rib = Math.max(0.6, Math.min(pt.rib, size - 1.5));

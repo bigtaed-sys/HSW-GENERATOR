@@ -11,7 +11,8 @@ import { buildAccessory } from './accessories/build';
 import { accessoryDef } from './accessories/defs';
 import { buildPiece, prepareTools, toMesh } from './build';
 import { PITCH_X, PITCH_Y } from './constants';
-import { polysOf, Scope, type Kernel, type Manifold } from './kernel';
+import { fitOnBed, polysOf, Scope, type Kernel, type Manifold } from './kernel';
+import { frameStyleParams } from './frames/styles';
 import { computeLayout, type LayoutInternal } from './layout';
 import type { AccessoryShape, MeshData } from './layoutTypes';
 
@@ -207,6 +208,19 @@ async function handle(msg: WorkerRequest) {
         if (mesh) items.push({ name: `${names[piece.kind] ?? piece.kind}-${piece.label}`, mesh: placeForPrint(mesh, piece.printAngle ?? 0, piece.kind === 'frame' && project.frame.style === 'lit') });
         ctx.postMessage({ type: 'progress', id: msg.id, done: ++done, total } satisfies WorkerResponse);
         await tick();
+      }
+      if (include.frame && L.plates.length) {
+        const thick = Math.max(0.2, frameStyleParams(project.frame).patch ?? 0.6);
+        L.plates.forEach((plate, i) => {
+          const s = new Scope();
+          try {
+            const m = s.t(plate.extrude(thick));
+            const fit = fitOnBed(polysOf(plate), 1000, 1000);
+            items.push({ name: `${names.joint ?? 'joint'}-J${i + 1}`, mesh: placeForPrint(toMesh(`j${i}`, m), fit.angle ?? 0) });
+          } finally {
+            s.free();
+          }
+        });
       }
       if (include.accessories) {
         const unique = new Map<string, { type: string; params: Record<string, number>; count: number }>();
