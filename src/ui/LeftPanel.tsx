@@ -181,7 +181,11 @@ function FrameTab() {
           <Section title={t('frameFit')}>
             <Slider label={t('proud')} value={frame.proud} min={0} max={12} step={0.5} onChange={bind((p, v) => (p.frame.proud = v))} />
             <Slider label={t('lip')} value={frame.lip} min={0} max={10} step={0.5} onChange={bind((p, v) => (p.frame.lip = v))} />
-            {frame.lip > 0 && frame.proud < 1 && <p className="hint warn">{t('lipNeedsProud')}</p>}
+            {frame.lip > 0 && frame.proud < 1 ? (
+              <p className="hint warn" style={{ marginTop: -4, marginBottom: 12 }}>{t('lipNeedsProud')}</p>
+            ) : (
+              <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>{t('lipHint')}</p>
+            )}
             <Slider label={t('innerChamfer')} value={frame.innerChamfer} min={0} max={4} step={0.2} onChange={bind((p, v) => (p.frame.innerChamfer = v))} />
           </Section>
           <Section title={t('frameJoints')}>

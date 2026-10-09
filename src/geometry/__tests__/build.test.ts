@@ -117,6 +117,7 @@ describe('build', () => {
       expect(m.volume()).toBeGreaterThan(500);
       const bb = m.boundingBox();
       console.log(def.type, m.decompose().length, bb.min.map(Math.round), bb.max.map(Math.round));
+      expect(m.decompose().length).toBe(1);
       s.free();
     }
   });

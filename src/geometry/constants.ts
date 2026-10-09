@@ -33,7 +33,7 @@ export const HOLE_FRONT = 22;
 export const INSERT = {
   body: 19.7,
   lip: 22.5,
-  lipHeight: 2.5,
+  lipHeight: 3, // PStover's inserts
   length: 10,
   bore: 13.4,
   snap: 0.45,
