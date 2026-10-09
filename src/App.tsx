@@ -1,4 +1,4 @@
-import { PenTool, AlertTriangle, Eye, EyeOff, Hexagon, Layers, Maximize, MousePointer2, RotateCcw, Bolt, Shapes, Square } from 'lucide-react';
+import { Lightbulb, PenTool, AlertTriangle, Eye, EyeOff, Hexagon, Layers, Maximize, MousePointer2, RotateCcw, Bolt, Shapes, Square } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useT } from './i18n';
 import { useGeo } from './model/geo';
@@ -76,6 +76,7 @@ function CanvasToolbar() {
     { id: 'reset', icon: <RotateCcw size={16} />, label: t('toolReset') },
   ] as const;
   const custom = s.project.wall.shape === 'custom';
+  const hasLed = !!useGeo((g) => g.layout?.led);
   return (
     <div className="floating bc">
       {s.view === '2d' && custom && (
@@ -105,6 +106,11 @@ function CanvasToolbar() {
       <button className={`icon-btn ${s.showAccessories ? 'active' : ''}`} title={t('toggleAccessories')} onClick={() => s.setUi({ showAccessories: !s.showAccessories })}>
         {s.showAccessories ? <Eye size={16} /> : <EyeOff size={16} />}
       </button>
+      {s.view === '3d' && hasLed && (
+        <button className={`icon-btn ${s.ledSim ? 'active' : ''}`} title={t('ledSim')} onClick={() => s.setUi({ ledSim: !s.ledSim })}>
+          <Lightbulb size={16} />
+        </button>
+      )}
       {s.view === '3d' && (
         <button className={`icon-btn ${s.exploded ? 'active' : ''}`} title={t('exploded')} onClick={() => s.setUi({ exploded: !s.exploded })}>
           <Layers size={16} />

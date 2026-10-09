@@ -186,6 +186,28 @@ function WallTab() {
   );
 }
 
+const LED_COLORS = ['#ffc27a', '#fff1dc', '#dfe9ff', '#ff6fae', '#ff3b3b', '#3b82ff', '#30e08a', '#b35cff'];
+
+/** Strip length, preview switch and light colour; shown whenever the frame takes a strip. */
+function LedExtras() {
+  const t = useT();
+  const led = useGeo((s) => s.layout?.led);
+  const color = useStore((s) => s.project.frame.led.color);
+  const sim = useStore((s) => s.ledSim);
+  const update = useStore((s) => s.update);
+  const setUi = useStore((s) => s.setUi);
+  if (!led) return null;
+  return (
+    <>
+      <p className="hint" style={{ marginBottom: 10 }}>
+        {t(led.kind === 'inside' ? 'ledInsideHint' : 'ledLength')} <b>≈{(led.length / 1000).toFixed(2)} m</b>
+      </p>
+      <Toggle label={t('ledSim')} checked={sim} onChange={(v) => setUi({ ledSim: v, ...(v ? { view: '3d' as const } : {}) })} />
+      <Swatches palette={LED_COLORS} value={color} onChange={(v) => update((p) => void (p.frame.led.color = v))} />
+    </>
+  );
+}
+
 function FrameTab() {
   const t = useT();
   const lang = useStore((s) => s.lang);
@@ -340,6 +362,7 @@ function FrameTab() {
                 {frame.led.width > frame.width - 3 && <p className="hint warn">{t('ledTooWide')}</p>}
               </>
             )}
+            <LedExtras />
           </Section>
           {frame.mode === 'separate' && (
             <Section title={t('frameColor')}>

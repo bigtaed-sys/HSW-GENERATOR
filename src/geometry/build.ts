@@ -5,7 +5,7 @@ import { hexagon } from './lattice';
 import { textOutline, textWidth } from './text';
 import { buildFrameStyle, isConvex } from './frames/build';
 import { frameStyleParams } from './frames/styles';
-import { roundedRect, type LayoutInternal } from './layout';
+import { litLevels, roundedRect, type LayoutInternal } from './layout';
 import type { MeshData } from './layoutTypes';
 
 const EPS = 0.02;
@@ -309,9 +309,8 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
     const pt = frameStyleParams(project.frame);
     if (L.pattern && project.frame.style === 'lit') {
       // Hollow back under a front plate; grooves leave a thin floor the light shines through.
-      const top = L.frontZ - Math.max(pt.skin + 0.8, Math.min(pt.plate, L.frontZ - 1.5));
+      const { top, floor } = litLevels(project.frame, L.frontZ);
       const hollow = s.t(s.t(L.pattern.hollow!.extrude(top + 1)).translate([0, 0, -1]));
-      const floor = top + Math.max(0.2, pt.skin);
       const grooves = s.t(s.t(L.pattern.cut.extrude(L.frontZ + 4 - floor)).translate([0, 0, floor]));
       const tools = [hollow, grooves];
       // Notch for the cable through the outer wall at the lowest point.

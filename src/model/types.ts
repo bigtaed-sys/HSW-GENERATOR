@@ -52,6 +52,8 @@ export interface LedSettings {
   depth: number;
   /** Hole for the cable at the bottom of the frame. */
   wire: boolean;
+  /** Light colour in the lighting preview. */
+  color: string;
 }
 
 export interface GridSettings {

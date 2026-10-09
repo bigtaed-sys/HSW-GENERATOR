@@ -158,11 +158,11 @@ export function Toggle({ label, checked, onChange }: { label: ReactNode; checked
   );
 }
 
-export function Swatches({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const custom = !PALETTE.includes(value.toLowerCase());
+export function Swatches({ value, onChange, palette = PALETTE }: { value: string; onChange: (v: string) => void; palette?: string[] }) {
+  const custom = !palette.includes(value.toLowerCase());
   return (
     <div className="swatches">
-      {PALETTE.map((c) => (
+      {palette.map((c) => (
         <button
           key={c}
           className={`swatch ${c === value.toLowerCase() ? 'on' : ''}`}

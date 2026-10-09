@@ -13,6 +13,7 @@ import { useT } from '../i18n';
 import { ensureShape, shapeKey, useGeo } from '../model/geo';
 import { uid, useStore } from '../model/store';
 import { preparedModel } from './customModel';
+import { LedPreview } from './LedPreview';
 
 const geomCache = new WeakMap<MeshData, THREE.BufferGeometry>();
 
@@ -77,12 +78,26 @@ function Scene() {
   const showAcc = useStore((s) => s.showAccessories);
   const selection = useStore((s) => s.selection);
   const setUi = useStore((s) => s.setUi);
-  const { wall } = useThemeBg();
+  const ledOn = useStore((s) => s.ledSim) && !!layout?.led;
+  const { wall: wallDay } = useThemeBg();
+  // Lights off for the LED preview: a dim room so the strip shows.
+  const dim = ledOn ? 0.12 : 1;
+  const wall = ledOn ? '#9a968f' : wallDay;
 
   const panelMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: project.colors.panel, roughness: 0.62, metalness: 0.02 }),
     [project.colors.panel],
   );
+  // Exploded with the lights off: see-through parts show where the strip runs.
+  const xray = ledOn && exploded;
+  useEffect(() => {
+    for (const m of [panelMat, frameMat]) {
+      m.transparent = xray;
+      m.opacity = xray ? 0.35 : 1;
+      m.depthWrite = !xray;
+      m.needsUpdate = true;
+    }
+  });
   const frameMat = useMemo(
     () => new THREE.MeshStandardMaterial({ color: project.colors.frame, roughness: 0.5, metalness: 0.02 }),
     [project.colors.frame],
@@ -93,10 +108,10 @@ function Scene() {
   return (
     <>
       <CameraRig w={w} h={h} />
-      <hemisphereLight args={['#ffffff', '#8a7f70', 0.9]} />
+      <hemisphereLight args={['#ffffff', '#8a7f70', 0.9 * dim]} />
       <directionalLight
         position={[-w * 0.6, h * 1.2, Math.max(w, h) * 1.2]}
-        intensity={1.6}
+        intensity={1.6 * dim}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-w}
@@ -106,7 +121,15 @@ function Scene() {
         shadow-camera-far={Math.max(w, h) * 4}
         shadow-bias={-0.0005}
       />
-      <directionalLight position={[w, -h * 0.4, w * 0.6]} intensity={0.35} />
+      <directionalLight position={[w, -h * 0.4, w * 0.6]} intensity={0.35 * dim} />
+      {ledOn && layout?.led && (
+        <LedPreview
+          led={layout.led}
+          color={project.frame.led.color}
+          lift={exploded ? (project.frame.mode === 'integrated' ? 15 : 30) : 0}
+          size={Math.max(w, h)}
+        />
+      )}
       {/* Room wall */}
       <mesh position={[0, 0, -0.6]} receiveShadow>
         <planeGeometry args={[w * 6, h * 6]} />
@@ -333,7 +356,11 @@ function CustomMesh({ id, position }: { id: string; position: [number, number, n
 export function Viewer3D() {
   const t = useT();
   const build = useGeo((s) => s.build);
-  const { bg } = useThemeBg();
+  const { bg: day } = useThemeBg();
+  const sim = useStore((s) => s.ledSim);
+  const hasLed = useGeo((s) => !!s.layout?.led);
+  const ledOn = sim && hasLed;
+  const bg = ledOn ? '#060608' : day;
   return (
     <>
       <Canvas

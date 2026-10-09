@@ -107,6 +107,20 @@ describe('build', () => {
     }
   });
 
+  it('lays out a wide integrated Backlit cells frame on a small bed without slivers', () => {
+    const p = defaultProject();
+    FRAME_PRESETS.find((x) => x.id === 'hex-lit')!.apply(p.frame);
+    Object.assign(p.wall, { width: 1110, height: 685, cornerRadius: 126 });
+    Object.assign(p.printer, { preset: 'custom', bedW: 180, bedH: 180 });
+    const L = computeLayout(K, p);
+    expect(L.layout.warnings).toEqual([]);
+    for (const piece of L.layout.pieces) expect(Math.min(...piece.printSize)).toBeGreaterThan(40);
+    // The lighting preview knows where the strip runs.
+    expect(L.layout.led?.kind).toBe('inside');
+    expect(L.layout.led!.length).toBeGreaterThan(3000);
+    L.scope.free();
+  });
+
   it('makes a small test kit with one panel and a jointed frame', () => {
     const p = makeTestKit(defaultProject());
     const L = computeLayout(K, p);

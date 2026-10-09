@@ -438,6 +438,13 @@ export function Canvas2D() {
               strokeWidth={sw * 0.6}
             />
           )}
+          {/* LED strip route */}
+          {layout.led && (
+            <g pointerEvents="none">
+              <path d={pathOf([layout.led.path])} fill="none" stroke={project.frame.led.color} strokeOpacity={0.85} strokeWidth={Math.max(2 * sw, Math.min(layout.led.width, 6))} strokeDasharray={`${6 * sw} ${4 * sw}`} />
+              {layout.led.wire && <circle cx={layout.led.wire[0]} cy={layout.led.wire[1]} r={5 * sw} fill={project.frame.led.color} stroke="#000" strokeWidth={sw} />}
+            </g>
+          )}
           {/* Seam patches behind a Backlit cells frame */}
           {layout.plates?.map((pl) => (
             <path key={pl.id} d={pathOf(pl.polys)} fill="none" stroke={frameDark ? 'rgba(255,255,255,.7)' : 'rgba(0,0,0,.55)'} strokeWidth={sw} strokeDasharray={`${3 * sw} ${2 * sw}`} />
