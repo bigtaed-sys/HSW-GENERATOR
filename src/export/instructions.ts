@@ -23,6 +23,8 @@ const T = {
     rowTitle: (r: string) => `Панели ряда ${r}`,
     rowText: (list: string, n: number) =>
       `Установите панели ${list} снизу вверх, слева направо. Края соседних панелей входят друг в друга зигзагом. Прикрутите через ячейки с донышком: ${n} саморезов.`,
+    rowTextConn: (list: string, n: number) =>
+      `Приложите панели ${list} к уже установленным, края входят друг в друга зигзагом. Защёлкните соединители, отмеченные на схеме (${n} шт.), и закрутите в каждый по одному саморезу.`,
     frameUnder: 'Рамка: нижние части',
     frameUnderText: (list: string, n: number) =>
       `Приложите части ${list}: их концы лежат снизу в нахлёстах. Губа рамки заходит на края панелей. Пока закрутите только саморезы вне нахлёстов: ${n} шт.`,
@@ -55,6 +57,8 @@ const T = {
     rowTitle: (r: string) => `Panels, row ${r}`,
     rowText: (list: string, n: number) =>
       `Fit panels ${list} from the bottom up, left to right. Neighbouring edges interlock in a zigzag. Screw them through the screw cells: ${n} screws.`,
+    rowTextConn: (list: string, n: number) =>
+      `Place panels ${list} against the ones already up; the edges interlock in a zigzag. Snap in the connectors marked on the diagram (${n}) and drive one screw into each.`,
     frameUnder: 'Frame: lower parts',
     frameUnderText: (list: string, n: number) =>
       `Place parts ${list}; their ends lie underneath at the joints. The frame lip goes over the panel edges. For now only drive the screws outside the joints: ${n}.`,
@@ -125,10 +129,18 @@ export function instructionsHtml(
     const r = p.label.replace(/\d+$/, '');
     rows.set(r, [...(rows.get(r) ?? []), p]);
   }
+  const placedConn = new Set<string>();
   for (const r of [...rows.keys()].sort().reverse()) {
     const ps = rows.get(r)!.sort((a, b) => a.bbox[0] - b.bbox[0]);
     const cur = new Set(ps.map((p) => p.id));
-    steps.push({ title: t.rowTitle(r), text: t.rowText(list(ps), ps.reduce((a, p) => a + mountsOf(p), 0)), map: miniMap(layout, cur, done) });
+    // Connectors go in once every panel they hold is up.
+    const conns = layout.connectors.filter((k) => !placedConn.has(k.id) && k.panels.every((id) => cur.has(id) || done.has(id)));
+    conns.forEach((k) => placedConn.add(k.id));
+    const marks = conns
+      .map((k) => `<circle cx="${k.screw[0].toFixed(1)}" cy="${(-k.screw[1]).toFixed(1)}" r="9" fill="#2563eb" stroke="#fff" stroke-width="2"/>`)
+      .join('');
+    const text = layout.connectors.length ? t.rowTextConn(list(ps), conns.length) : t.rowText(list(ps), ps.reduce((a, p) => a + mountsOf(p), 0));
+    steps.push({ title: t.rowTitle(r), text, map: miniMap(layout, cur, done, marks) });
     ps.forEach((p) => done.add(p.id));
   }
 
@@ -170,8 +182,7 @@ export function instructionsHtml(
     map: miniMap(layout, new Set(), done, accPaths),
   });
 
-  const totalScrews =
-    panels.reduce((a, p) => a + mountsOf(p), 0) + [...shared.keys()].length;
+  const totalScrews = panels.reduce((a, p) => a + mountsOf(p), 0) + layout.connectors.length + [...shared.keys()].length;
   const grams = layout.stats.volume * 1.24;
   const rowsHtml = layout.pieces
     .map(

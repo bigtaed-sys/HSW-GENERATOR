@@ -5,6 +5,7 @@ import { strToU8, zipSync } from 'fflate';
 import type { Project } from '../model/types';
 import { meshToStl } from '../export/stl';
 import { makeTestKit } from '../model/testKit';
+import { canonicalGroup, connectorParams } from './connectors';
 import { meshesTo3mf } from '../export/threemf';
 import { buildAccessory } from './accessories/build';
 import { accessoryDef } from './accessories/defs';
@@ -155,7 +156,8 @@ function placeForPrint(mesh: MeshData, angle: number): MeshData {
 function accessoryForPrint(type: string, params: Record<string, number>, tol: number): MeshData {
   const s = new Scope();
   try {
-    const rot = accessoryDef(type)?.printRot ?? [0, 90, 0];
+    // Connectors print upside down: flat top on the bed, inserts pointing up.
+    const rot = type === 'connector' ? ([180, 0, 0] as [number, number, number]) : (accessoryDef(type)?.printRot ?? [0, 90, 0]);
     const m = s.t(buildAccessory(K, s, type, params, tol).rotate(rot));
     return placeForPrint(toMesh(type, m), 0);
   } finally {
@@ -222,6 +224,28 @@ async function handle(msg: WorkerRequest) {
           await tick();
         }
       }
+      if (msg.testKit) {
+        // A two-cell connector to test joining across a seam.
+        const pair = canonicalGroup([[0, 0], [0, PITCH_Y]], 0);
+        items.push({
+          name: `${names.connector ?? 'connector'}-2x`,
+          mesh: accessoryForPrint('connector', { ...connectorParams(pair.offsets), screw: project.mount.screwDiameter, head: project.mount.headDiameter }, project.printer.insertTolerance ?? 0),
+        });
+      }
+      if (include.panels && L.layout.connectors.length) {
+        const unique = new Map<string, { params: Record<string, number>; count: number }>();
+        for (const k of L.layout.connectors) {
+          const key = JSON.stringify(k.params);
+          const u = unique.get(key);
+          if (u) u.count++;
+          else unique.set(key, { params: k.params, count: 1 });
+        }
+        for (const u of unique.values())
+          items.push({
+            name: `${names.connector ?? 'connector'}-${u.params.n}x x${u.count}`,
+            mesh: accessoryForPrint('connector', u.params, project.printer.insertTolerance ?? 0),
+          });
+      }
       const safe = (s: string) => s.replace(/[^\p{L}\p{N}\-_ .]+/gu, '_');
       const base = safe(project.name || 'hsw-wall');
       let data: Uint8Array;
@@ -231,6 +255,13 @@ async function handle(msg: WorkerRequest) {
       } else {
         const files: Record<string, Uint8Array> = {};
         for (const it of items) files[`${safe(it.name)}.stl`] = meshToStl(it.mesh, it.name);
+        if (items.some((it) => it.name.startsWith(names.connector ?? 'connector')))
+          files['CREDITS.txt'] = strToU8(
+            'Connector parts: design adapted from PStover\'s HSW connectors, licensed CC BY-NC 4.0\n' +
+              '(https://creativecommons.org/licenses/by-nc/4.0/). Non-commercial use only.\n' +
+              'Honeycomb Storage Wall: original design by RostaP.\n' +
+              'Generated with HSW Studio.\n',
+          );
         files['project.hsw.json'] = strToU8(JSON.stringify({ ...project, customModels: [] }, null, 2));
         data = zipSync(files, { level: 6 });
         ctx.postMessage({ type: 'export', id: msg.id, data, filename: `${base}.zip` } satisfies WorkerResponse, [data.buffer]);

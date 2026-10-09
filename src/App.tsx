@@ -122,8 +122,13 @@ function StatusBar() {
             {t('statSize')} <b>{st.width.toFixed(0)} × {st.height.toFixed(0)}</b> mm
           </span>
           <span>
-            {t('statCells')} <b>{st.holes + st.partial + st.mounts}</b>
+            {t('statCells')} <b>{st.holes + st.partial + st.mounts + (layout?.cells.filter((c) => c.kind === 'conn').length ?? 0)}</b>
           </span>
+          {st.connectors > 0 && (
+            <span className="hide-sm">
+              {t('statConnectors')} <b>{st.connectors}</b>
+            </span>
+          )}
           <span>
             {t('statPanels')} <b>{st.panels}</b>
           </span>

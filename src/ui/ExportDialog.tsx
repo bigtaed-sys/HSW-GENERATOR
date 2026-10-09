@@ -36,7 +36,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const run = async (testKit = false) => {
-    const names: Record<string, string> = { panel: t('panelName'), frame: t('frameName') };
+    const names: Record<string, string> = { panel: t('panelName'), frame: t('frameName'), connector: t('connectorName') };
     for (const a of project.accessories) names[a.type] = accessoryDef(a.type)?.name[lang] ?? a.type;
     setError(null);
     setProgress({ d: 0, t: 1 });

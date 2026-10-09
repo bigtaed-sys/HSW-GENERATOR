@@ -56,6 +56,8 @@ export function migrate(p: Partial<Project>): Project {
     f.lip = 0;
     f.joint = 'none';
   }
+  // Projects saved before connectors existed keep their screw cells.
+  if (p.mount && !(p.mount as Partial<Project['mount']>).mode) (p.mount as Project['mount']).mode = 'cells';
   return {
     ...d,
     ...p,

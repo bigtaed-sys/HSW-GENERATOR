@@ -51,4 +51,22 @@ describe('layout', () => {
       L.scope.free();
     }
   });
+
+  it('splits frames with large corner radii into sensible parts', () => {
+    const area = (polys: [number, number][][]) => polys.reduce((a, q) => a + signedArea(q), 0);
+    for (const r of [170, 200, 299]) {
+      const p = defaultProject();
+      p.wall.cornerRadius = r;
+      p.frame.lip = 0;
+      p.frame.joint = 'none';
+      const L = computeLayout(K, p);
+      expect(L.layout.warnings).toEqual([]);
+      const frames = L.layout.pieces.filter((x) => x.kind === 'frame');
+      // No slivers: every part is clearly longer than a joint.
+      for (const f of frames) expect(Math.max(...f.printSize)).toBeGreaterThan(80);
+      const total = L.layout.pieces.reduce((a, pc) => a + area(pc.polys), 0);
+      expect(Math.abs(total - area(L.layout.outer))).toBeLessThan(area(L.layout.outer) * 0.001);
+      L.scope.free();
+    }
+  });
 });

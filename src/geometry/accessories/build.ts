@@ -2,6 +2,7 @@ import { INSERT, PITCH_X, PITCH_Y } from '../constants';
 import { ccw, Scope, type Kernel, type Manifold } from '../kernel';
 import { hexagon, type Vec2 } from '../lattice';
 import { accessoryDef } from './defs';
+import { buildConnector } from './connector';
 
 // Local accessory frame: origin at the front face of the anchor cell centre,
 // +Y up, +Z out of the wall. Inserts go into -Z.
@@ -55,6 +56,7 @@ const rod = (K: Kernel, s: Scope, d: number, len: number, seg = 32) =>
 
 export function buildAccessory(K: Kernel, s: Scope, type: string, p: Record<string, number>, tol = 0): Manifold {
   const { Manifold } = K;
+  if (type === 'connector') return buildConnector(K, s, p, tol, { d: p.screw ?? 4, head: p.head ?? 8 });
   const def = accessoryDef(type);
   if (!def) return s.t(Manifold.cube(1));
   const pegs = def.pegs(p).map(pegOffset);
