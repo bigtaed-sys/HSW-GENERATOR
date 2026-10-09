@@ -305,8 +305,8 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
     cache.set('screw', screwTool(K, s, project, L.frontZ - (ledFront ? Math.min(project.frame.led.depth, L.frontZ - 2) : 0)));
     const led = ledTool(K, s, L, project);
     if (led) cache.set('led', led);
-    const pt = project.frame.pattern;
-    if (L.pattern && pt.mode === 'lit') {
+    const pt = frameStyleParams(project.frame);
+    if (L.pattern && project.frame.style === 'lit') {
       // Hollow back under a front plate; grooves leave a thin floor the light shines through.
       const top = L.frontZ - Math.max(pt.skin + 0.8, Math.min(pt.plate, L.frontZ - 1.5));
       const hollow = s.t(s.t(L.pattern.hollow!.extrude(top + 1)).translate([0, 0, -1]));
@@ -316,7 +316,7 @@ export function prepareTools(K: Kernel, L: LayoutInternal, project: Project, s: 
       // Notch for the cable through the outer wall at the lowest point.
       const pts = L.outer.toPolygons().flat();
       const low = pts.reduce((a, p) => (p[1] < a[1] ? p : a), pts[0]);
-      tools.push(s.t(Manifold.cube([8, Math.max(8, pt.margin * 2 + 4), Math.min(5, top) + 1]).translate([low[0] - 4, low[1] - 4, -1])));
+      tools.push(s.t(Manifold.cube([8, Math.max(8, pt.wall * 2 + 4), Math.min(5, top) + 1]).translate([low[0] - 4, low[1] - 4, -1])));
       cache.set('pattern', s.t(Manifold.union(tools)));
     } else if (L.pattern) {
       // Pockets follow the styled front: a skin `depth` thick under the top surface.

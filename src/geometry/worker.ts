@@ -204,7 +204,7 @@ async function handle(msg: WorkerRequest) {
       let done = 0;
       for (const piece of pieces) {
         const mesh = pieceMesh(project, piece.id);
-        if (mesh) items.push({ name: `${names[piece.kind] ?? piece.kind}-${piece.label}`, mesh: placeForPrint(mesh, piece.printAngle ?? 0, piece.kind === 'frame' && project.frame.pattern.mode === 'lit') });
+        if (mesh) items.push({ name: `${names[piece.kind] ?? piece.kind}-${piece.label}`, mesh: placeForPrint(mesh, piece.printAngle ?? 0, piece.kind === 'frame' && project.frame.style === 'lit') });
         ctx.postMessage({ type: 'progress', id: msg.id, done: ++done, total } satisfies WorkerResponse);
         await tick();
       }

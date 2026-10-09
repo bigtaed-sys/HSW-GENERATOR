@@ -35,8 +35,6 @@ export interface FrameSettings {
   innerChamfer: number;
   /** How the inner edge of the frame meets the cells: a straight chamfer or a round. */
   innerProfile: InnerProfile;
-  /** Decorative relief on the frame front. */
-  pattern: PatternSettings;
   screws: boolean;
   joint: FrameJoint;
   jointLength: number;
@@ -44,24 +42,6 @@ export interface FrameSettings {
 }
 
 export type InnerProfile = 'chamfer' | 'round';
-
-/** hex: small decorative pockets; lit: grooves along the wall's honeycomb with a thin floor over a hollow back, for LEDs to shine through. */
-export type PatternMode = 'none' | 'hex' | 'lit';
-
-export interface PatternSettings {
-  mode: PatternMode;
-  /** Distance between pocket centres. */
-  size: number;
-  /** Width of the ribs between pockets. */
-  rib: number;
-  depth: number;
-  /** Plain border kept along the outer and inner edges of the frame (lit: the walls around the hollow). */
-  margin: number;
-  /** lit: thickness of the front plate over the hollow. */
-  plate: number;
-  /** lit: plastic left at the bottom of the grooves; light passes through it. */
-  skin: number;
-}
 
 export type LedMode = 'none' | 'front' | 'halo';
 

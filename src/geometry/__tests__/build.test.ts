@@ -77,7 +77,7 @@ describe('build', () => {
       p.wall.height = 500;
       preset.apply(p.frame);
       const L = computeLayout(K, p);
-      if (p.frame.pattern.mode !== 'none') expect(L.layout.pattern?.length ?? 0).toBeGreaterThan(p.frame.pattern.mode === 'lit' ? 0 : 50);
+      if (p.frame.style === 'cells' || p.frame.style === 'lit') expect(L.layout.pattern?.length ?? 0).toBeGreaterThan(p.frame.style === 'lit' ? 0 : 50);
       const s = new Scope();
       const cache = prepareTools(K, L, p, s);
       const t = performance.now();

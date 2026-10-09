@@ -239,7 +239,13 @@ function FrameTab() {
                 <button
                   key={st.id}
                   className={`shape-card ${frame.style === st.id ? 'on' : ''}`}
-                  onClick={() => update((p) => void (p.frame.style = st.id))}
+                  onClick={() =>
+                    update((p) => {
+                      p.frame.style = st.id;
+                      // Relief styles need room: widen a narrow frame to the style's width.
+                      if (st.minWidth && p.frame.width < st.minWidth) p.frame.width = st.width ?? st.minWidth;
+                    })
+                  }
                 >
                   <svg width="44" height="30" viewBox="0 0 20 20">
                     <path d={st.icon} fill="currentColor" fillOpacity={0.2} stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
@@ -253,6 +259,10 @@ function FrameTab() {
             {style.params.map((pd) => (
               <ParamControl key={pd.key} def={pd} value={params[pd.key]} lang={lang} onChange={setParam(pd.key)} />
             ))}
+            {style.minWidth && frame.width < style.minWidth && (
+              <p className="hint warn">{t('styleTooNarrow').replace('{w}', String(style.minWidth))}</p>
+            )}
+            {style.note && <p className="hint">{style.note[lang]}</p>}
           </Section>
           <Section title={t('frameFit')}>
             <Slider label={t('proud')} value={frame.proud} min={0} max={12} step={0.5} onChange={bind((p, v) => (p.frame.proud = v))} />
@@ -279,38 +289,6 @@ function FrameTab() {
               step={0.2}
               onChange={bind((p, v) => (p.frame.innerChamfer = v))}
             />
-          </Section>
-          <Section title={t('patternTitle')}>
-            <Segmented
-              value={frame.pattern.mode}
-              onChange={(v) => update((p) => void (p.frame.pattern.mode = v))}
-              options={[
-                { value: 'none', label: t('patternNone') },
-                { value: 'hex', label: t('patternHex') },
-                { value: 'lit', label: t('patternLit') },
-              ]}
-            />
-            <p className="hint" style={{ marginBottom: 12 }}>
-              {t(frame.pattern.mode === 'hex' ? 'patternHexHint' : frame.pattern.mode === 'lit' ? 'patternLitHint' : 'patternNoneHint')}
-            </p>
-            {frame.pattern.mode === 'lit' && (
-              <>
-                <Slider label={t('patternGroove')} value={frame.pattern.rib} min={1} max={6} step={0.1} onChange={bind((p, v) => (p.frame.pattern.rib = v))} />
-                <Slider label={t('patternSkin')} value={frame.pattern.skin} min={0.2} max={1.6} step={0.04} onChange={bind((p, v) => (p.frame.pattern.skin = v))} />
-                <Slider label={t('patternPlate')} value={frame.pattern.plate} min={1.5} max={8} step={0.1} onChange={bind((p, v) => (p.frame.pattern.plate = v))} />
-                <Slider label={t('patternWall')} value={frame.pattern.margin} min={1.2} max={8} step={0.1} onChange={bind((p, v) => (p.frame.pattern.margin = v))} />
-                <p className="hint">{t(frame.mode === 'separate' ? 'patternLitPrintSeparate' : 'patternLitPrintIntegrated')}</p>
-              </>
-            )}
-            {frame.pattern.mode === 'hex' && (
-              <>
-                <Slider label={t('patternSize')} value={frame.pattern.size} min={4} max={24} step={0.5} onChange={bind((p, v) => (p.frame.pattern.size = v))} />
-                <Slider label={t('patternRib')} value={frame.pattern.rib} min={0.8} max={4} step={0.1} onChange={bind((p, v) => (p.frame.pattern.rib = v))} />
-                <Slider label={t('patternDepth')} value={frame.pattern.depth} min={0.2} max={3} step={0.1} onChange={bind((p, v) => (p.frame.pattern.depth = v))} />
-                <Slider label={t('patternMargin')} value={frame.pattern.margin} min={0} max={15} step={0.5} onChange={bind((p, v) => (p.frame.pattern.margin = v))} />
-                {frame.width < frame.pattern.size * 2 + frame.pattern.margin * 2 && <p className="hint warn">{t('patternNarrow')}</p>}
-              </>
-            )}
           </Section>
           {frame.mode === 'separate' && <Section title={t('frameJoints')}>
             <Segmented
