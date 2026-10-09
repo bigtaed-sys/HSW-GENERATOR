@@ -17,7 +17,7 @@
 - **Рамка:** стили «Классика», «Ступенька», «С канавкой», «Багет»; новые стили добавляются в реестр `src/geometry/frames/`. Есть выступ над сотами, губа, которая прижимает края панелей к стене, и соединения внахлёст между частями рамки (каждый нахлёст стягивается одним саморезом). Рамка автоматически режется на части под стол принтера; разрезы на прямых участках ставятся симметрично.
 - **Ячейки у края:** только целые или обрезанные по контуру. Минимальная стенка у края, сдвиг и смена шахматного порядка сетки.
 - **Автонарезка на панели** под выбранный принтер (пресеты Bambu, Prusa, Creality, Voron или свой размер). Швы идут по середине стенок между ячейками. Панели подписаны (A1, B2, …) и при экспорте разворачиваются так, чтобы влезть на стол.
-- **Крепление:** ячейки под саморез с донышком и потайным отверстием расставляются автоматически, их можно добавлять и убирать вручную. Есть инструмент «сплошная ячейка».
+- **Крепление соединителями:** соединители защёлкиваются в ячейки поверх швов, каждый крепится одним саморезом. Четверные ставятся там, где сходятся панели, парные вдоль швов с заданным шагом, одиночные там, где панели нужно больше крепежа. Расстановка совместима с соединителями PStover. Есть и старый режим с ячейками под саморез. Инструмент «сплошная ячейка» никуда не делся.
 - **Вырезы** под розетки и выключатели: бортик вокруг, фаска, перетаскивание мышью.
 - **Библиотека аксессуаров:** крючок, штырь, держатель плоскогубцев, полка, коробка, рейка для отвёрток, кольцо, табличка, заглушка. У каждого свои параметры. Вставки (inserts) генерируются автоматически, а редактор проверяет, что они попадают в свободные ячейки.
 - **Свои модели:** загрузите STL, чтобы увидеть его на стене при планировании.
@@ -54,7 +54,7 @@ Design the whole wall instead of one panel at a time. Set the shape, size, frame
 - **Frames:** Classic, Stepped, Grooved and Bevel styles; new styles are added in the registry in `src/geometry/frames/`. The frame can stand out over the cells, has a lip that holds the panel edges against the wall, and has half-lap joints between its parts, each joint held by one screw. The frame is split automatically to fit the bed, with symmetric cuts on straight edges.
 - **Edge cells:** whole cells only, or cells cut along the outline. Set the minimum edge wall, shift the grid or flip the column stagger.
 - **Automatic panel splitting** for your printer (Bambu, Prusa, Creality and Voron presets, or a custom bed). Seams run along the middle of the walls between cells. Panels are labelled (A1, B2, …) and rotated on export so they fit the bed.
-- **Mounting:** screw cells with a floor and a countersunk hole are placed automatically. You can add or remove them by hand, and make any cell solid.
+- **Connector mounting:** snap-in connectors bridge the seams between panels, and each one takes a single screw. 4-cell connectors go where panels meet, 2-cell ones along the seams at a set spacing, and single ones wherever a panel needs more screws. Placement is compatible with PStover's connectors. The older screw-cell mode is still available, and any cell can be made solid.
 - **Cutouts** for sockets and switches, with a rim and a chamfer, moved by dragging.
 - **Accessory library:** hook, peg, plier holder, shelf, bin, screwdriver rack, ring holder, label plate and cap, each with its own parameters. The inserts are generated automatically, and the editor checks that they land on free cells.
 - **Your own STLs:** upload a model to see it on the wall while you plan.

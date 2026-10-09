@@ -88,6 +88,27 @@ export function toMesh(id: string, m: Manifold): MeshData {
   return { id, positions, indices: new Uint32Array(mesh.triVerts), volume: m.volume() / 1000 };
 }
 
+/** Longest-ish horizontal segment on the bottom of an outline (interior above it), near its middle. */
+function bottomEdge(polys: [number, number][][]): { x: number; y: number; len: number } | null {
+  let best: { x: number; y: number; len: number } | null = null;
+  const xs = polys.flat().map((p) => p[0]);
+  const mid = (Math.min(...xs) + Math.max(...xs)) / 2;
+  for (const poly of polys) {
+    const area = poly.reduce((a, p, i) => a + p[0] * poly[(i + 1) % poly.length][1] - poly[(i + 1) % poly.length][0] * p[1], 0);
+    for (let i = 0; i < poly.length; i++) {
+      if (area < 0) break; // holes (cutouts) are not edges of the panel
+      const [x0, y0] = poly[i];
+      const [x1, y1] = poly[(i + 1) % poly.length];
+      const len = x1 - x0;
+      // Going +x on a counter-clockwise outer contour means the material is above.
+      if (Math.abs(y1 - y0) > 0.01 || len < 10) continue;
+      const cand = { x: (x0 + x1) / 2, y: y0, len };
+      if (!best || cand.y < best.y - 1 || (Math.abs(cand.y - best.y) <= 1 && Math.abs(cand.x - mid) < Math.abs(best.x - mid))) best = cand;
+    }
+  }
+  return best;
+}
+
 /** Builds one piece (panel or frame segment) in wall coordinates. */
 export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<string, Manifold>): Manifold | null {
   const project = L.project;
@@ -115,14 +136,22 @@ export function buildPiece(K: Kernel, L: LayoutInternal, id: string, cache: Map<
       const near = L.cuts.filter((c) => c.x + c.w / 2 + c.chamfer > x0 && c.x - c.w / 2 - c.chamfer < x1 && c.y + c.h / 2 + c.chamfer > y0 && c.y - c.h / 2 - c.chamfer < y1);
       for (const t of cutoutTools(K, s, near, DEPTH)) body = s.t(body.subtract(t));
       if (project.printer.engrave) {
-        // Label on the floor of the top-left screw cell, above the countersink.
         const mounts = cells.filter((c) => c.kind === 'mount').sort((a, b) => b.y - a.y || a.x - b.x);
+        const edge = bottomEdge(piece.polys);
         if (mounts.length) {
+          // Label on the floor of the top-left screw cell, above the countersink.
           const c = mounts[0];
           const h = Math.min(3.6, (12 * 6) / Math.max(1, piece.label.length * 6 - 2));
           const text = textOutline(K, s, piece.label, h, 0.6);
           const depth = Math.min(0.5, project.mount.floor - 1);
           const tool = s.t(s.t(text.extrude(depth + 1)).translate([c.x, c.y + 6.6, project.mount.floor - depth]));
+          body = s.t(body.subtract(tool));
+        } else if (edge) {
+          // Label on a flat face of the panel's bottom edge, reading from below with the front up.
+          const h = Math.min(4.5, (Math.min(12, edge.len - 1.5) * 6) / Math.max(1, piece.label.length * 6 - 2));
+          const depth = 0.4;
+          const text = textOutline(K, s, piece.label, h, 0.7);
+          const tool = s.t(s.t(s.t(text.extrude(depth + 1)).rotate([90, 0, 0])).translate([edge.x, edge.y + depth, DEPTH / 2 - 0.4]));
           body = s.t(body.subtract(tool));
         }
       }

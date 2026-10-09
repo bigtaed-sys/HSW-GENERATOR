@@ -129,6 +129,22 @@ function Scene() {
           />
         );
       })}
+      {layout?.connectors.map((k) => {
+        const shape = shapes[shapeKey('connector', k.params)];
+        if (!shape) return null;
+        return (
+          <mesh
+            key={k.id}
+            geometry={toGeometry(shape.mesh)}
+            position={[k.screw[0], k.screw[1], DEPTH + (exploded ? 40 : 0)]}
+            rotation={[0, 0, (k.rot * Math.PI) / 180]}
+            castShadow
+            receiveShadow
+          >
+            <meshStandardMaterial color={project.colors.connector} roughness={0.55} />
+          </mesh>
+        );
+      })}
       {showAcc &&
         project.accessories.map((a) => {
           const shape = shapes[shapeKey(a.type, a.params)];

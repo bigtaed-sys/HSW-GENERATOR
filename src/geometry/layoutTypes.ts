@@ -1,6 +1,6 @@
 import type { Vec2 } from './lattice';
 
-export type CellKind = 'hole' | 'partial' | 'mount' | 'solid';
+export type CellKind = 'hole' | 'partial' | 'mount' | 'solid' | 'conn';
 
 export interface LayoutCell {
   c: number;
@@ -34,16 +34,31 @@ export interface LayoutPiece {
   stage: number;
 }
 
+/** A connector group: inserts in neighbouring cells, bridged on top, one screw. */
+export interface LayoutConnector {
+  id: string;
+  cells: { c: number; r: number }[];
+  /** Centre of the screw cell. */
+  screw: Vec2;
+  /** Rotation (degrees) from the canonical shape (screw cell at the origin) to the wall. */
+  rot: number;
+  /** Shape parameters (canonical offsets) for the geometry builder. */
+  params: Record<string, number>;
+  panels: string[];
+}
+
 export interface Layout {
   outer: Vec2[][];
   inner: Vec2[][];
   cells: LayoutCell[];
   pieces: LayoutPiece[];
+  connectors: LayoutConnector[];
   warnings: string[];
   stats: {
     holes: number;
     partial: number;
     mounts: number;
+    connectors: number;
     panels: number;
     framePieces: number;
     volume: number;

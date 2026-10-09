@@ -376,6 +376,18 @@ export function Canvas2D() {
           )}
           <path d={geo.mounts} fill={mix(colors.panel, '#000', panelDark ? 0.2 : 0.12)} />
           <path d={geo.screws} fill="#000" fillOpacity={0.85} />
+          {/* Connectors */}
+          {layout.connectors.map((k) => {
+            const shape = shapes[shapeKey('connector', k.params)];
+            if (!shape) return null;
+            return (
+              <g key={k.id} transform={`translate(${k.screw[0]},${k.screw[1]}) rotate(${k.rot})`} pointerEvents="none">
+                <path d={pathOf(shape.outline)} fill={colors.connector} fillRule="evenodd" stroke={mix(colors.connector, '#000', 0.45)} strokeWidth={sw} />
+                <circle r={project.mount.headDiameter / 2} fill={mix(colors.connector, '#000', 0.25)} />
+                <circle r={project.mount.screwDiameter / 2} fill="#000" fillOpacity={0.8} />
+              </g>
+            );
+          })}
           {/* Cutouts (hit areas + selection) */}
           {project.cutouts.map((c) => {
             const sel = selection?.kind === 'cutout' && selection.id === c.id;

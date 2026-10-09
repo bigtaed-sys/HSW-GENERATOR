@@ -13,6 +13,7 @@ import {
   type Kernel,
 } from './kernel';
 import { cellCenter, hexagon, latticeRange, tile, type Vec2 } from './lattice';
+import { placeConnectors } from './connectors';
 import type { Layout, LayoutCell, LayoutPiece } from './layoutTypes';
 
 const hexArea = (flat: number) => (Math.sqrt(3) / 2) * flat * flat;
@@ -239,8 +240,8 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     });
     for (const cell of cells) cell.panel = panelOf.get(cellKey(cell.c, cell.r)) ?? '';
 
-    // Screw cells.
-    for (const piece of pieces) {
+    // Screw cells (legacy mounting mode).
+    for (const piece of mount.mode === 'connectors' ? [] : pieces) {
       const own = cells.filter((c) => c.panel === piece.id && c.kind === 'hole');
       for (const c of own) if (project.cells[cellKey(c.c, c.r)] === 'mount') c.kind = 'mount';
       const free = own.filter((c) => c.kind === 'hole' && project.cells[cellKey(c.c, c.r)] !== 'open');
@@ -258,6 +259,17 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
         if (best) best.kind = 'mount';
       }
     }
+  }
+
+  // ---- Connectors ----------------------------------------------------------
+  const connectors =
+    mount.mode === 'connectors'
+      ? placeConnectors(cells, pieces.filter((p) => p.kind === 'panel'), project.cells, Math.max(50, mount.spacing))
+      : [];
+  for (const k of connectors) Object.assign(k.params, { screw: mount.screwDiameter, head: mount.headDiameter });
+  if (connectors.length) {
+    const taken = new Set(connectors.flatMap((k) => k.cells.map((c) => cellKey(c.c, c.r))));
+    for (const c of cells) if (taken.has(cellKey(c.c, c.r))) c.kind = 'conn';
   }
 
   // ---- Frame pieces --------------------------------------------------------
@@ -335,7 +347,7 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
       const area = p.polys.reduce((a, poly) => a + signedArea(poly), 0);
       let v = area * DEPTH;
       for (const c of own) {
-        if (c.kind === 'hole' || c.kind === 'mount') v -= HOLE_VOLUME;
+        if (c.kind === 'hole' || c.kind === 'mount' || c.kind === 'conn') v -= HOLE_VOLUME;
         else if (c.kind === 'partial' && c.poly)
           v -= (HOLE_VOLUME * c.poly.reduce((a, poly) => a + signedArea(poly), 0)) / frontArea;
       }
@@ -351,11 +363,13 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
     inner: hasFrame ? polysOf(inner) : [],
     cells,
     pieces,
+    connectors,
     warnings: [...new Set(warnings)],
     stats: {
       holes: cells.filter((c) => c.kind === 'hole').length,
       partial: cells.filter((c) => c.kind === 'partial').length,
       mounts: cells.filter((c) => c.kind === 'mount').length,
+      connectors: connectors.length,
       panels: pieces.filter((p) => p.kind === 'panel').length,
       framePieces: pieces.filter((p) => p.kind === 'frame').length,
       volume,

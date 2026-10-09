@@ -213,7 +213,8 @@ function GridTab() {
   const t = useT();
   const grid = useStore((s) => s.project.grid);
   const mount = useStore((s) => s.project.mount);
-  const color = useStore((s) => s.project.colors.panel);
+  const colors = useStore((s) => s.project.colors);
+  const color = colors.panel;
   const update = useStore((s) => s.update);
   const bind = useBind();
   return (
@@ -257,10 +258,35 @@ function GridTab() {
       </Section>
       <div className="divider" />
       <Section title={t('mounting')}>
-        <Slider label={t('mountsPerPanel')} value={mount.perPanel} min={0} max={6} unit="" onChange={bind((p, v) => (p.mount.perPanel = v))} />
+        <Segmented
+          value={mount.mode}
+          onChange={(v) => update((p) => void (p.mount.mode = v))}
+          options={[
+            { value: 'connectors', label: t('modeConnectors') },
+            { value: 'cells', label: t('modeCells') },
+          ]}
+        />
+        <p className="hint" style={{ marginBottom: 12 }}>
+          {mount.mode === 'connectors' ? t('connectorsHint') : t('cellsHint')}
+        </p>
+        {mount.mode === 'connectors' ? (
+          <Slider label={t('connectorSpacing')} value={mount.spacing} min={60} max={250} step={5} onChange={bind((p, v) => (p.mount.spacing = v))} />
+        ) : (
+          <>
+            <Slider label={t('mountsPerPanel')} value={mount.perPanel} min={0} max={6} unit="" onChange={bind((p, v) => (p.mount.perPanel = v))} />
+            <Slider label={t('floor')} value={mount.floor} min={1.2} max={5} step={0.2} onChange={bind((p, v) => (p.mount.floor = v))} />
+          </>
+        )}
         <Slider label={t('screwDiameter')} value={mount.screwDiameter} min={2.5} max={6} step={0.5} onChange={bind((p, v) => (p.mount.screwDiameter = v))} />
         <Slider label={t('headDiameter')} value={mount.headDiameter} min={5} max={14} step={0.5} onChange={bind((p, v) => (p.mount.headDiameter = v))} />
-        <Slider label={t('floor')} value={mount.floor} min={1.2} max={5} step={0.2} onChange={bind((p, v) => (p.mount.floor = v))} />
+        {mount.mode === 'connectors' && (
+          <div className="field">
+            <div className="field-head">
+              <span>{t('connectorColor')}</span>
+            </div>
+            <Swatches value={colors.connector} onChange={(v) => update((p) => void (p.colors.connector = v))} />
+          </div>
+        )}
         <p className="hint">
           <Grid3x3 size={12} style={{ verticalAlign: -2 }} /> {t('cellToolsHint')}
         </p>

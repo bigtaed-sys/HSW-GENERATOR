@@ -40,8 +40,14 @@ export interface GridSettings {
   flipStagger: boolean;
 }
 
+export type MountMode = 'connectors' | 'cells';
+
 export interface MountSettings {
-  perPanel: number; // automatically placed screw cells per panel
+  /** connectors: snap-in connector groups across panel seams, one screw each; cells: screw floors inside cells. */
+  mode: MountMode;
+  /** Target distance between connectors along a seam (mm). */
+  spacing: number;
+  perPanel: number; // automatically placed screw cells per panel (cells mode)
   screwDiameter: number;
   headDiameter: number;
   floor: number;
@@ -108,7 +114,7 @@ export interface Project {
   printer: PrinterSettings;
   accessories: Accessory[];
   customModels: CustomModel[];
-  colors: { panel: string; frame: string };
+  colors: { panel: string; frame: string; connector: string };
 }
 
 export const cellKey = (c: number, r: number) => `${c},${r}`;

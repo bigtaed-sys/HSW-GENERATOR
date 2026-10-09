@@ -43,7 +43,10 @@ function refreshLayout(project: Project) {
     const seq = ++layoutSeq;
     try {
       const layout = await geometry.layout(project);
-      if (seq === layoutSeq) useGeo.setState({ layout, layoutBusy: false, error: null });
+      if (seq === layoutSeq) {
+        useGeo.setState({ layout, layoutBusy: false, error: null });
+        for (const k of layout.connectors) ensureShape('connector', k.params);
+      }
     } catch (e) {
       if (seq === layoutSeq) useGeo.setState({ layoutBusy: false, error: String(e) });
     }
