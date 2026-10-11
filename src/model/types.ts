@@ -110,6 +110,8 @@ export interface PrinterSettings {
   holeTolerance: number;
   /** Added to the generated insert body width (mm). Positive = tighter fit. */
   insertTolerance: number;
+  /** Gap per side between a seam patch and its pocket (Backlit cells); negative for a press fit. */
+  patchTolerance: number;
   /** Engrave piece labels (screw-cell floors of panels, back of frame parts). */
   engrave: boolean;
 }

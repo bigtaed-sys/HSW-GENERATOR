@@ -59,7 +59,7 @@ export function defaultProject(): Project {
     mount: { mode: 'connectors', junctions: true, seams: false, spacing: 150, edges: true, edgeSpacing: 250, minPerPanel: 1, perPanel: 4, screwDiameter: 4, headDiameter: 8, floor: 2.4 },
     cells: {},
     cutouts: [],
-    printer: { preset: 'bambu-x1', bedW: 256, bedH: 256, margin: 5, holeTolerance: 0, insertTolerance: 0, engrave: true },
+    printer: { preset: 'bambu-x1', bedW: 256, bedH: 256, margin: 5, holeTolerance: 0, insertTolerance: 0, patchTolerance: 0.05, engrave: true },
     accessories: [],
     customModels: [],
     colors: { panel: '#2b2d31', frame: '#c8a27a', connector: '#8f949b' },
