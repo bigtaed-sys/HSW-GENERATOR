@@ -166,17 +166,19 @@ function Scene() {
           />
         );
       })}
-      {layout?.plates?.map((pl) => (
-        <mesh
-          key={pl.id}
-          geometry={plateGeometry(pl.polys, pl.z1 - pl.z0)}
-          material={exploded ? patchMat : project.frame.mode === 'integrated' ? panelMat : frameMat}
-          // In place they hide in the pockets behind the plate; the exploded view lifts them out in front, marked blue.
-          position={[0, 0, exploded ? (project.frame.mode === 'integrated' ? 15 : 30) + DEPTH + project.frame.proud + 25 : pl.z0]}
-          castShadow
-          receiveShadow
-        />
-      ))}
+      {layout?.plates?.map((pl) => {
+        // In place they hide in the pockets behind the plate; the exploded view lifts them out in front, marked blue.
+        const z = exploded ? (project.frame.mode === 'integrated' ? 15 : 30) + DEPTH + project.frame.proud + 25 : pl.z0;
+        const half = (pl.z1 - pl.z0) / 2;
+        const mat = exploded ? patchMat : project.frame.mode === 'integrated' ? panelMat : frameMat;
+        // Stepped: the wide half towards the wall, the narrower half under the overhanging floor.
+        return (
+          <group key={pl.id} position={[0, 0, z]}>
+            <mesh geometry={plateGeometry(pl.polys, half)} material={mat} castShadow receiveShadow />
+            <mesh geometry={plateGeometry(pl.topPolys, half)} material={mat} position={[0, 0, half]} castShadow receiveShadow />
+          </group>
+        );
+      })}
       {layout?.connectors.map((k) => {
         const shape = shapes[shapeKey('connector', k.params)];
         if (!shape) return null;

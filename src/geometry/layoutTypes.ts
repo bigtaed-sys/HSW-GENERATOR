@@ -77,8 +77,8 @@ export interface Layout {
   /** Pockets of the decorative frame pattern. */
   pattern?: Vec2[][];
   /** Backlit cells: thin patches glued behind the seams between frame parts. */
-  /** z0..z1: where the patch sits in the wall (the groove floor level). */
-  plates?: { id: string; label: string; polys: Vec2[][]; z0: number; z1: number; anchor: Vec2 }[];
+  /** z0..z1: where the patch sits in the wall (the groove floor level); `polys` is its wide lower half, `topPolys` the narrower upper half. */
+  plates?: { id: string; label: string; polys: Vec2[][]; topPolys: Vec2[][]; z0: number; z1: number; anchor: Vec2 }[];
   led?: LayoutLed;
   cells: LayoutCell[];
   pieces: LayoutPiece[];
