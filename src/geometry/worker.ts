@@ -216,7 +216,8 @@ async function handle(msg: WorkerRequest) {
         L.plates.forEach((plate, i) => {
           const s = new Scope();
           try {
-            const m = s.t(plate.extrude(thick));
+            // Wide half on the bed, the narrower half on top (it faces the front in the wall).
+            const m = s.t(s.t(plate.extrude(thick / 2 + 0.005)).add(s.t(s.t(L.platesTop[i].extrude(thick / 2)).translate([0, 0, thick / 2]))));
             const fit = fitOnBed(polysOf(plate), 1000, 1000);
             items.push({ name: `${names.joint ?? 'joint'}-J${i + 1}`, mesh: placeForPrint(toMesh(`j${i}`, m), fit.angle ?? 0) });
           } finally {
