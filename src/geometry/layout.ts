@@ -521,22 +521,24 @@ export function computeLayout(K: Kernel, project: Project): LayoutInternal {
   // groove floor, so the groove there has no floor of its own; a patch as thick as the floor
   // sits flush in it, becomes the groove floor across the seam and holds the two parts together.
   // The pocket and the patch are stepped: the upper half of the floor overhangs the patch
-  // edge by PATCH_LIP, so the fitting gap never shows through to the hollow.
+  // edge by PATCH_LIP, so the fitting gap (printer.patchTolerance) never shows through to the hollow.
   const plates: CrossSection[] = [];
   const platesTop: CrossSection[] = [];
   const seats: CrossSection[] = [];
   const seatsTop: CrossSection[] = [];
   if (pattern?.hollow) {
     const w = Math.max(6, frameStyleParams(frame).patchWidth ?? 16);
+    const clearance = project.printer.patchTolerance ?? 0.05;
     for (const { c, width } of seams) {
       const seam = seamPath(K, s, c, width, grid, 0.05);
       if (!seam) continue;
       const seat = s.t(s.t(seam.offset(w / 2, 'Miter')).intersect(pattern.hollow));
       if (seat.area() < 20) continue;
+      const seatTop = s.t(seat.offset(-PATCH_LIP, 'Miter'));
       seats.push(seat);
-      seatsTop.push(s.t(seat.offset(-PATCH_LIP, 'Miter')));
-      plates.push(s.t(seat.offset(-PATCH_CLEARANCE, 'Miter')));
-      platesTop.push(s.t(seat.offset(-PATCH_LIP - PATCH_CLEARANCE, 'Miter')));
+      seatsTop.push(seatTop);
+      plates.push(s.t(seat.offset(-clearance, 'Miter')));
+      platesTop.push(s.t(seatTop.offset(-clearance, 'Miter')));
     }
   }
 
@@ -1386,7 +1388,6 @@ function ledLayout(
 }
 
 /** Gap around a seam patch in its pocket. */
-const PATCH_CLEARANCE = 0.15;
 /** How far the upper half of the groove floor overhangs a seam patch's edge. */
 const PATCH_LIP = 1;
 

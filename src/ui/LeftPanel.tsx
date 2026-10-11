@@ -584,6 +584,7 @@ function CutoutsTab() {
 function PrintTab() {
   const t = useT();
   const printer = useStore((s) => s.project.printer);
+  const litStyle = useStore((s) => s.project.frame.style === 'lit' && s.project.frame.width > 0);
   const update = useStore((s) => s.update);
   const bind = useBind();
   const layout = useGeo((s) => s.layout);
@@ -646,6 +647,16 @@ function PrintTab() {
           step={0.05}
           onChange={bind((p, v) => (p.printer.insertTolerance = v))}
         />
+        {litStyle && (
+          <Slider
+            label={t('patchTolerance')}
+            value={printer.patchTolerance}
+            min={-0.15}
+            max={0.3}
+            step={0.01}
+            onChange={bind((p, v) => (p.printer.patchTolerance = v))}
+          />
+        )}
         <p className="hint" style={{ marginTop: -4, marginBottom: 12 }}>
           {t('fitHint')}
         </p>
